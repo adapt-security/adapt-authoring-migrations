@@ -389,7 +389,7 @@ describe('MigrationsModule', () => {
       await assert.rejects(() => inst.runMigrations(), { message: 'boom' })
     })
 
-    it('should query the _migrations collection', async () => {
+    it('should query the migrations collection', async () => {
       const docs = [{ module: 'mod-a', version: '1.0.0' }]
       const collectionMock = mock.fn(() => ({
         find: mock.fn(() => ({ toArray: async () => docs }))
@@ -397,11 +397,11 @@ describe('MigrationsModule', () => {
       const inst = createInstance({ db: { collection: collectionMock } })
       const result = await inst.getCompletedMigrations()
 
-      assert.equal(collectionMock.mock.calls[0].arguments[0], '_migrations')
+      assert.equal(collectionMock.mock.calls[0].arguments[0], 'migrations')
       assert.deepEqual(result, docs)
     })
 
-    it('should insert a record into _migrations', async () => {
+    it('should insert a record into migrations', async () => {
       const insertOneMock = mock.fn()
       const collectionMock = mock.fn(() => ({ insertOne: insertOneMock }))
       const inst = createInstance({ db: { collection: collectionMock } })
@@ -411,7 +411,7 @@ describe('MigrationsModule', () => {
         description: 'test'
       })
 
-      assert.equal(collectionMock.mock.calls[0].arguments[0], '_migrations')
+      assert.equal(collectionMock.mock.calls[0].arguments[0], 'migrations')
       const doc = insertOneMock.mock.calls[0].arguments[0]
       assert.equal(doc.module, 'mod-a')
       assert.equal(doc.version, '1.0.0')

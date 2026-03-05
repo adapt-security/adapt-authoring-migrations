@@ -5,7 +5,7 @@ The migrations module provides a convention-based system for running database mi
 ## How it works
 
 1. On startup, the module scans all loaded modules for files in a `migrations/` directory
-2. Each file is compared against the `_migrations` collection to determine what has already run
+2. Each file is compared against the `migrations` collection to determine what has already run
 3. Pending migrations are sorted by version and executed in order
 4. Completed migrations are recorded so they never run twice
 
@@ -144,7 +144,7 @@ Pending migrations are sorted globally by semver version, then alphabetically by
 
 ## State tracking
 
-Completed migrations are recorded in the `_migrations` collection:
+Completed migrations are recorded in the `migrations` collection:
 
 ```javascript
 {
