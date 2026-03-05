@@ -1,0 +1,54 @@
+{
+  "name": "adapt-authoring-migrations",
+  "version": "1.0.0",
+  "description": "Module for running database migrations on app startup",
+  "homepage": "https://github.com/adapt-security/adapt-authoring-migrations",
+  "license": "GPL-3.0",
+  "type": "module",
+  "main": "index.js",
+  "repository": "github:adapt-security/adapt-authoring-migrations",
+  "scripts": {
+    "test": "node --test 'tests/**/*.spec.js'"
+  },
+  "devDependencies": {
+    "@semantic-release/git": "^10.0.1",
+    "conventional-changelog-eslint": "^6.0.0",
+    "semantic-release": "^25.0.2",
+    "standard": "^17.1.0"
+  },
+  "release": {
+    "plugins": [
+      [
+        "@semantic-release/commit-analyzer",
+        {
+          "preset": "eslint"
+        }
+      ],
+      [
+        "@semantic-release/release-notes-generator",
+        {
+          "preset": "eslint"
+        }
+      ],
+      "@semantic-release/npm",
+      "@semantic-release/github",
+      [
+        "@semantic-release/git",
+        {
+          "assets": [
+            "package.json"
+          ],
+          "message": "Chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
+        }
+      ]
+    ]
+  },
+  "dependencies": {
+    "adapt-authoring-core": "^2.3.0",
+    "semver": "^7.6.0"
+  },
+  "peerDependencies": {
+    "adapt-authoring-core": "^2.2.0",
+    "adapt-authoring-mongodb": "^3.0.0"
+  }
+}
