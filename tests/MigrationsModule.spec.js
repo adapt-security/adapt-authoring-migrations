@@ -1,7 +1,7 @@
 import { describe, it, mock } from 'node:test'
 import assert from 'node:assert/strict'
 import MigrationDSL from '../lib/MigrationDSL.js'
-import MigrationRunner from '../lib/MigrationRunner.js'
+import MigrationsModule from '../lib/MigrationsModule.js'
 
 // ── MigrationDSL ────────────────────────────────────────────────────
 
@@ -256,12 +256,32 @@ describe('MigrationDSL', () => {
   })
 })
 
-// ── MigrationRunner ─────────────────────────────────────────────────
+// ── MigrationsModule ────────────────────────────────────────────────
 
-describe('MigrationRunner', () => {
+describe('MigrationsModule', () => {
+  const proto = MigrationsModule.prototype
+
+  function createInstance (overrides) {
+    const inst = {
+      db: {
+        collection: mock.fn(() => ({
+          find: mock.fn(() => ({ toArray: async () => [] })),
+          insertOne: mock.fn()
+        }))
+      },
+      log: mock.fn(),
+      runMigrations: proto.runMigrations,
+      filterPending: proto.filterPending,
+      getCompletedMigrations: proto.getCompletedMigrations,
+      recordCompleted: proto.recordCompleted,
+      ...overrides
+    }
+    return inst
+  }
+
   describe('filterPending', () => {
     it('should filter out completed migrations', () => {
-      const runner = new MigrationRunner({ db: {} })
+      const inst = createInstance()
       const discovered = [
         { module: 'mod-a', version: '1.0.0', description: 'first' },
         { module: 'mod-a', version: '2.0.0', description: 'second' }
@@ -269,19 +289,19 @@ describe('MigrationRunner', () => {
       const completed = [
         { module: 'mod-a', version: '1.0.0' }
       ]
-      const pending = runner.filterPending(discovered, completed)
+      const pending = inst.filterPending(discovered, completed)
       assert.equal(pending.length, 1)
       assert.equal(pending[0].version, '2.0.0')
     })
 
     it('should sort by semver then module name', () => {
-      const runner = new MigrationRunner({ db: {} })
+      const inst = createInstance()
       const discovered = [
         { module: 'mod-b', version: '2.0.0', description: 'b2' },
         { module: 'mod-a', version: '2.0.0', description: 'a2' },
         { module: 'mod-a', version: '1.0.0', description: 'a1' }
       ]
-      const pending = runner.filterPending(discovered, [])
+      const pending = inst.filterPending(discovered, [])
       assert.equal(pending[0].version, '1.0.0')
       assert.equal(pending[1].module, 'mod-a')
       assert.equal(pending[1].version, '2.0.0')
@@ -290,57 +310,47 @@ describe('MigrationRunner', () => {
     })
 
     it('should return empty array when all are completed', () => {
-      const runner = new MigrationRunner({ db: {} })
+      const inst = createInstance()
       const discovered = [
         { module: 'mod-a', version: '1.0.0', description: 'first' }
       ]
       const completed = [
         { module: 'mod-a', version: '1.0.0' }
       ]
-      const pending = runner.filterPending(discovered, completed)
+      const pending = inst.filterPending(discovered, completed)
       assert.equal(pending.length, 0)
     })
 
     it('should return empty array when nothing is discovered', () => {
-      const runner = new MigrationRunner({ db: {} })
-      const pending = runner.filterPending([], [])
+      const inst = createInstance()
+      const pending = inst.filterPending([], [])
       assert.equal(pending.length, 0)
     })
   })
 
-  describe('run', () => {
+  describe('runMigrations', () => {
     it('should log "no pending migrations" when none are pending', async () => {
-      const logMock = mock.fn()
-      const findMock = mock.fn(() => ({ toArray: async () => [] }))
-      const module = {
-        db: { collection: mock.fn(() => ({ find: findMock })) },
-        log: logMock
-      }
-      const runner = new MigrationRunner(module)
-      runner.discoverMigrations = mock.fn(async () => [])
-      await runner.run()
+      const inst = createInstance()
+      inst.discoverMigrations = mock.fn(async () => [])
+      await inst.runMigrations()
 
-      assert.equal(logMock.mock.callCount(), 1)
-      assert.equal(logMock.mock.calls[0].arguments[0], 'info')
-      assert.ok(logMock.mock.calls[0].arguments[1].includes('no pending'))
+      assert.equal(inst.log.mock.callCount(), 1)
+      assert.equal(inst.log.mock.calls[0].arguments[0], 'info')
+      assert.ok(inst.log.mock.calls[0].arguments[1].includes('no pending'))
     })
 
     it('should execute pending migrations and record them', async () => {
-      const logMock = mock.fn()
       const insertOneMock = mock.fn()
-      const findMock = mock.fn(() => ({ toArray: async () => [] }))
       const executeMock = mock.fn()
-      const module = {
+      const inst = createInstance({
         db: {
           collection: mock.fn(() => ({
-            find: findMock,
+            find: mock.fn(() => ({ toArray: async () => [] })),
             insertOne: insertOneMock
           }))
-        },
-        log: logMock
-      }
-      const runner = new MigrationRunner(module)
-      runner.discoverMigrations = mock.fn(async () => [
+        }
+      })
+      inst.discoverMigrations = mock.fn(async () => [
         {
           module: 'mod-a',
           version: '1.0.0',
@@ -348,7 +358,7 @@ describe('MigrationRunner', () => {
           dsl: { execute: executeMock }
         }
       ])
-      await runner.run()
+      await inst.runMigrations()
 
       assert.equal(executeMock.mock.callCount(), 1)
       assert.equal(insertOneMock.mock.callCount(), 1)
@@ -360,14 +370,8 @@ describe('MigrationRunner', () => {
     })
 
     it('should stop on migration failure', async () => {
-      const logMock = mock.fn()
-      const findMock = mock.fn(() => ({ toArray: async () => [] }))
-      const module = {
-        db: { collection: mock.fn(() => ({ find: findMock })) },
-        log: logMock
-      }
-      const runner = new MigrationRunner(module)
-      runner.discoverMigrations = mock.fn(async () => [
+      const inst = createInstance()
+      inst.discoverMigrations = mock.fn(async () => [
         {
           module: 'mod-a',
           version: '1.0.0',
@@ -382,32 +386,26 @@ describe('MigrationRunner', () => {
         }
       ])
 
-      await assert.rejects(() => runner.run(), { message: 'boom' })
+      await assert.rejects(() => inst.runMigrations(), { message: 'boom' })
     })
-  })
 
-  describe('getCompletedMigrations', () => {
     it('should query the _migrations collection', async () => {
       const docs = [{ module: 'mod-a', version: '1.0.0' }]
-      const toArrayMock = mock.fn(async () => docs)
-      const findMock = mock.fn(() => ({ toArray: toArrayMock }))
-      const collectionMock = mock.fn(() => ({ find: findMock }))
-      const module = { db: { collection: collectionMock } }
-      const runner = new MigrationRunner(module)
-      const result = await runner.getCompletedMigrations()
+      const collectionMock = mock.fn(() => ({
+        find: mock.fn(() => ({ toArray: async () => docs }))
+      }))
+      const inst = createInstance({ db: { collection: collectionMock } })
+      const result = await inst.getCompletedMigrations()
 
       assert.equal(collectionMock.mock.calls[0].arguments[0], '_migrations')
       assert.deepEqual(result, docs)
     })
-  })
 
-  describe('recordCompleted', () => {
     it('should insert a record into _migrations', async () => {
       const insertOneMock = mock.fn()
       const collectionMock = mock.fn(() => ({ insertOne: insertOneMock }))
-      const module = { db: { collection: collectionMock } }
-      const runner = new MigrationRunner(module)
-      await runner.recordCompleted({
+      const inst = createInstance({ db: { collection: collectionMock } })
+      await inst.recordCompleted({
         module: 'mod-a',
         version: '1.0.0',
         description: 'test'
