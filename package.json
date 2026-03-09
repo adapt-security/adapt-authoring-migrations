@@ -10,11 +10,18 @@
   "scripts": {
     "test": "node --test 'tests/**/*.spec.js'"
   },
+  "dependencies": {
+    "adapt-authoring-core": "^2.3.0",
+    "semver": "^7.6.0"
+  },
   "devDependencies": {
     "@semantic-release/git": "^10.0.1",
     "conventional-changelog-eslint": "^6.0.0",
     "semantic-release": "^25.0.2",
     "standard": "^17.1.0"
+  },
+  "peerDependencies": {
+    "adapt-authoring-mongodb": "^3.0.0"
   },
   "release": {
     "plugins": [
@@ -42,13 +49,5 @@
         }
       ]
     ]
-  },
-  "dependencies": {
-    "adapt-authoring-core": "^2.3.0",
-    "semver": "^7.6.0"
-  },
-  "peerDependencies": {
-    "adapt-authoring-core": "^2.2.0",
-    "adapt-authoring-mongodb": "^3.0.0"
   }
 }
