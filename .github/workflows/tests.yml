@@ -1,0 +1,14 @@
+name: Tests
+on: push
+jobs:
+  default:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+      - run: npm install
+      - run: npm test
