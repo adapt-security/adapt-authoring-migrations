@@ -1,0 +1,16 @@
+{
+  "root": "migrations",
+  "routes": [
+    {
+      "route": "/status",
+      "handlers": { "get": "statusHandler" },
+      "permissions": { "get": ["read:migrations"] },
+      "meta": {
+        "get": {
+          "summary": "View migration status",
+          "description": "Returns all discovered migrations with their completion status."
+        }
+      }
+    }
+  ]
+}

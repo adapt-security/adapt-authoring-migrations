@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "dryRun": {
+      "description": "If true, migrations run without persisting changes. Uses transactions where supported, otherwise a read-only proxy.",
+      "type": "boolean",
+      "default": false
+    }
+  }
+}
