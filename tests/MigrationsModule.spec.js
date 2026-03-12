@@ -220,7 +220,7 @@ describe('MigrationDSL', () => {
       assert.deepEqual(db.renameCollection.mock.calls[0].arguments, ['old', 'new'])
     })
 
-    it('should call fn(db, options) for runCommand', async () => {
+    it('should call fn(db) for runCommand', async () => {
       const commandFn = mock.fn()
       const db = {}
       const dsl = new MigrationDSL()
@@ -228,100 +228,6 @@ describe('MigrationDSL', () => {
       await dsl.execute(db)
 
       assert.equal(commandFn.mock.calls[0].arguments[0], db)
-      assert.deepEqual(commandFn.mock.calls[0].arguments[1], {})
-    })
-
-    it('should pass a read-only db proxy to runCommand when dryRun is true', async () => {
-      const insertOneMock = mock.fn()
-      const db = {
-        collection: mock.fn(() => ({
-          insertOne: insertOneMock,
-          find: mock.fn(() => ({ toArray: async () => [] }))
-        }))
-      }
-      const commandFn = mock.fn(async (cmdDb) => {
-        await cmdDb.collection('test').insertOne({ x: 1 })
-      })
-      const dsl = new MigrationDSL()
-      dsl.runCommand(commandFn)
-      await dsl.execute(db, { dryRun: true, log: mock.fn() })
-
-      assert.equal(insertOneMock.mock.callCount(), 0)
-      assert.notEqual(commandFn.mock.calls[0].arguments[0], db)
-    })
-
-    it('should skip replaceOne for mutate when dryRun is true', async () => {
-      const replaceOneMock = mock.fn()
-      const db = {
-        collection: mock.fn(() => ({
-          find: mock.fn(() => ({ toArray: async () => [{ _id: '1', name: 'old' }] })),
-          replaceOne: replaceOneMock
-        }))
-      }
-      const dsl = new MigrationDSL()
-      dsl.where({ collection: 'test' }).mutate(doc => { doc.name = 'new' })
-      await dsl.execute(db, { dryRun: true })
-
-      assert.equal(replaceOneMock.mock.callCount(), 0)
-    })
-
-    it('should skip setIndex, dropIndex, and renameCollection when dryRun is true', async () => {
-      const createIndexMock = mock.fn()
-      const dropIndexMock = mock.fn()
-      const renameCollectionMock = mock.fn()
-      const db = {
-        collection: mock.fn(() => ({
-          createIndex: createIndexMock,
-          dropIndex: dropIndexMock
-        })),
-        renameCollection: renameCollectionMock
-      }
-      const dsl = new MigrationDSL()
-      dsl.setIndex('a', { x: 1 })
-      dsl.dropIndex('a', 'old_idx')
-      dsl.renameCollection('b', 'c')
-      await dsl.execute(db, { dryRun: true })
-
-      assert.equal(createIndexMock.mock.callCount(), 0)
-      assert.equal(dropIndexMock.mock.callCount(), 0)
-      assert.equal(renameCollectionMock.mock.callCount(), 0)
-    })
-
-    it('should log skipped operations when dryRun is true', async () => {
-      const db = {
-        collection: mock.fn(() => ({
-          find: mock.fn(() => ({ toArray: async () => [{ _id: '1' }, { _id: '2' }] }))
-        })),
-        renameCollection: mock.fn()
-      }
-      const logMock = mock.fn()
-      const dsl = new MigrationDSL()
-      dsl.where({ collection: 'test' }).mutate(() => {})
-      dsl.setIndex('users', { email: 1 })
-      dsl.dropIndex('users', 'old_idx')
-      dsl.renameCollection('a', 'b')
-      dsl.runCommand(() => {})
-      await dsl.execute(db, { dryRun: true, log: logMock })
-
-      const messages = logMock.mock.calls.map(c => c.arguments[1])
-      assert.ok(messages.some(m => m.includes('would mutate 2 doc(s) in test')))
-      assert.ok(messages.some(m => m.includes('would create index on users')))
-      assert.ok(messages.some(m => m.includes('would drop index old_idx on users')))
-      assert.ok(messages.some(m => m.includes('would rename collection a')))
-    })
-
-    it('should still run check when dryRun is true', async () => {
-      const db = {
-        collection: mock.fn(() => ({
-          find: mock.fn(() => ({ toArray: async () => [{ _id: '1', valid: true }] }))
-        }))
-      }
-      const checkFn = mock.fn()
-      const dsl = new MigrationDSL()
-      dsl.where({ collection: 'test' }).check(checkFn)
-      await dsl.execute(db, { dryRun: true })
-
-      assert.equal(checkFn.mock.callCount(), 1)
     })
 
     it('should execute operations in order', async () => {
@@ -364,13 +270,27 @@ describe('MigrationsModule', () => {
         }))
       },
       log: mock.fn(),
+      useTransactions: false,
       runMigrations: proto.runMigrations,
+      executeMigration: proto.executeMigration,
+      executeWithTransaction: proto.executeWithTransaction,
+      executeWithProxy: proto.executeWithProxy,
       filterPending: proto.filterPending,
       getCompletedMigrations: proto.getCompletedMigrations,
       recordCompleted: proto.recordCompleted,
       ...overrides
     }
     return inst
+  }
+
+  function createMigration (overrides) {
+    return {
+      module: 'mod-a',
+      version: '1.0.0',
+      description: 'test migration',
+      dsl: { execute: mock.fn() },
+      ...overrides
+    }
   }
 
   describe('filterPending', () => {
@@ -433,83 +353,223 @@ describe('MigrationsModule', () => {
       assert.ok(inst.log.mock.calls[0].arguments[1].includes('no pending'))
     })
 
-    it('should execute pending migrations and record them', async () => {
-      const insertOneMock = mock.fn()
-      const executeMock = mock.fn()
-      const inst = createInstance({
-        db: {
-          collection: mock.fn(() => ({
-            find: mock.fn(() => ({ toArray: async () => [] })),
-            insertOne: insertOneMock
-          }))
-        }
-      })
+    it('should call executeMigration for each pending migration', async () => {
+      const inst = createInstance()
+      inst.executeMigration = mock.fn()
       inst.discoverMigrations = mock.fn(async () => [
-        {
-          module: 'mod-a',
-          version: '1.0.0',
-          description: 'test migration',
-          dsl: { execute: executeMock }
-        }
+        createMigration({ version: '1.0.0' }),
+        createMigration({ version: '2.0.0' })
       ])
       await inst.runMigrations()
 
-      assert.equal(executeMock.mock.callCount(), 1)
-      assert.equal(insertOneMock.mock.callCount(), 1)
-      const recorded = insertOneMock.mock.calls[0].arguments[0]
-      assert.equal(recorded.module, 'mod-a')
-      assert.equal(recorded.version, '1.0.0')
-      assert.equal(recorded.description, 'test migration')
-      assert.ok(recorded.completedAt instanceof Date)
+      assert.equal(inst.executeMigration.mock.callCount(), 2)
     })
 
-    it('should not record completed migrations when dryRun is true', async () => {
-      const insertOneMock = mock.fn()
-      const executeMock = mock.fn()
-      const inst = createInstance({
-        db: {
-          collection: mock.fn(() => ({
-            find: mock.fn(() => ({ toArray: async () => [] })),
-            insertOne: insertOneMock
-          }))
-        }
-      })
-      inst.discoverMigrations = mock.fn(async () => [
-        {
-          module: 'mod-a',
-          version: '1.0.0',
-          description: 'test migration',
-          dsl: { execute: executeMock }
-        }
-      ])
+    it('should pass dryRun option to executeMigration', async () => {
+      const inst = createInstance()
+      inst.executeMigration = mock.fn()
+      inst.discoverMigrations = mock.fn(async () => [createMigration()])
       await inst.runMigrations({ dryRun: true })
 
-      assert.equal(executeMock.mock.callCount(), 1)
-      assert.equal(executeMock.mock.calls[0].arguments[1].dryRun, true)
-      assert.equal(typeof executeMock.mock.calls[0].arguments[1].log, 'function')
-      assert.equal(insertOneMock.mock.callCount(), 0)
+      assert.deepEqual(inst.executeMigration.mock.calls[0].arguments[1], { dryRun: true })
+    })
+
+    it('should log warning when dryRun without transaction support', async () => {
+      const inst = createInstance({ useTransactions: false })
+      inst.executeMigration = mock.fn()
+      inst.discoverMigrations = mock.fn(async () => [createMigration()])
+      await inst.runMigrations({ dryRun: true })
+
+      const warnings = inst.log.mock.calls.filter(c => c.arguments[0] === 'warn')
+      assert.equal(warnings.length, 1)
+      assert.ok(warnings[0].arguments[1].includes('read-only proxy'))
     })
 
     it('should stop on migration failure', async () => {
       const inst = createInstance()
+      inst.executeMigration = mock.fn(async () => { throw new Error('boom') })
       inst.discoverMigrations = mock.fn(async () => [
-        {
-          module: 'mod-a',
-          version: '1.0.0',
-          description: 'fails',
-          dsl: { execute: mock.fn(async () => { throw new Error('boom') }) }
-        },
-        {
-          module: 'mod-a',
-          version: '2.0.0',
-          description: 'never runs',
-          dsl: { execute: mock.fn() }
-        }
+        createMigration({ version: '1.0.0' }),
+        createMigration({ version: '2.0.0' })
       ])
 
       await assert.rejects(() => inst.runMigrations(), { message: 'boom' })
+      assert.equal(inst.executeMigration.mock.callCount(), 1)
+    })
+  })
+
+  describe('executeMigration', () => {
+    it('should execute directly and record when no transaction and no dryRun', async () => {
+      const migration = createMigration()
+      const insertOneMock = mock.fn()
+      const inst = createInstance({
+        useTransactions: false,
+        db: {
+          collection: mock.fn(() => ({
+            find: mock.fn(() => ({ toArray: async () => [] })),
+            insertOne: insertOneMock
+          }))
+        }
+      })
+      await inst.executeMigration(migration)
+
+      assert.equal(migration.dsl.execute.mock.callCount(), 1)
+      assert.equal(migration.dsl.execute.mock.calls[0].arguments[0], inst.db)
+      assert.equal(insertOneMock.mock.callCount(), 1)
     })
 
+    it('should use transaction when useTransactions is true', async () => {
+      const migration = createMigration()
+      const inst = createInstance({ useTransactions: true })
+      inst.executeWithTransaction = mock.fn()
+      await inst.executeMigration(migration)
+
+      assert.equal(inst.executeWithTransaction.mock.callCount(), 1)
+    })
+
+    it('should use proxy when dryRun is true and no transactions', async () => {
+      const migration = createMigration()
+      const inst = createInstance({ useTransactions: false })
+      inst.executeWithProxy = mock.fn()
+      await inst.executeMigration(migration, { dryRun: true })
+
+      assert.equal(inst.executeWithProxy.mock.callCount(), 1)
+    })
+  })
+
+  describe('executeWithTransaction', () => {
+    function createMockSession () {
+      return {
+        startTransaction: mock.fn(),
+        commitTransaction: mock.fn(),
+        abortTransaction: mock.fn(),
+        endSession: mock.fn()
+      }
+    }
+
+    it('should commit transaction on success', async () => {
+      const session = createMockSession()
+      const migration = createMigration()
+      const inst = createInstance({
+        client: { startSession: mock.fn(() => session) }
+      })
+      await inst.executeWithTransaction(migration, { dryRun: false })
+
+      assert.equal(session.startTransaction.mock.callCount(), 1)
+      assert.equal(session.commitTransaction.mock.callCount(), 1)
+      assert.equal(session.abortTransaction.mock.callCount(), 0)
+      assert.equal(session.endSession.mock.callCount(), 1)
+    })
+
+    it('should abort transaction on dryRun', async () => {
+      const session = createMockSession()
+      const migration = createMigration()
+      const inst = createInstance({
+        client: { startSession: mock.fn(() => session) }
+      })
+      await inst.executeWithTransaction(migration, { dryRun: true })
+
+      assert.equal(session.abortTransaction.mock.callCount(), 1)
+      assert.equal(session.commitTransaction.mock.callCount(), 0)
+      assert.equal(session.endSession.mock.callCount(), 1)
+    })
+
+    it('should abort transaction and rethrow on error', async () => {
+      const session = createMockSession()
+      const migration = createMigration({
+        dsl: { execute: mock.fn(async () => { throw new Error('fail') }) }
+      })
+      const inst = createInstance({
+        client: { startSession: mock.fn(() => session) }
+      })
+
+      await assert.rejects(
+        () => inst.executeWithTransaction(migration, { dryRun: false }),
+        { message: 'fail' }
+      )
+      assert.equal(session.abortTransaction.mock.callCount(), 1)
+      assert.equal(session.commitTransaction.mock.callCount(), 0)
+      assert.equal(session.endSession.mock.callCount(), 1)
+    })
+
+    it('should record completed after commit', async () => {
+      const session = createMockSession()
+      const insertOneMock = mock.fn()
+      const migration = createMigration()
+      const inst = createInstance({
+        client: { startSession: mock.fn(() => session) },
+        db: {
+          collection: mock.fn(() => ({
+            find: mock.fn(() => ({ toArray: async () => [] })),
+            insertOne: insertOneMock
+          }))
+        }
+      })
+      await inst.executeWithTransaction(migration, { dryRun: false })
+
+      assert.equal(insertOneMock.mock.callCount(), 1)
+    })
+
+    it('should not record completed on dryRun', async () => {
+      const session = createMockSession()
+      const insertOneMock = mock.fn()
+      const migration = createMigration()
+      const inst = createInstance({
+        client: { startSession: mock.fn(() => session) },
+        db: {
+          collection: mock.fn(() => ({
+            find: mock.fn(() => ({ toArray: async () => [] })),
+            insertOne: insertOneMock
+          }))
+        }
+      })
+      await inst.executeWithTransaction(migration, { dryRun: true })
+
+      assert.equal(insertOneMock.mock.callCount(), 0)
+    })
+  })
+
+  describe('executeWithProxy', () => {
+    it('should execute with a read-only db', async () => {
+      const insertOneMock = mock.fn()
+      const migration = createMigration({
+        dsl: {
+          execute: mock.fn(async (db) => {
+            await db.collection('test').insertOne({ x: 1 })
+          })
+        }
+      })
+      const inst = createInstance({
+        db: {
+          collection: mock.fn(() => ({
+            insertOne: insertOneMock,
+            find: mock.fn(() => ({ toArray: async () => [] }))
+          }))
+        }
+      })
+      await inst.executeWithProxy(migration)
+
+      assert.equal(insertOneMock.mock.callCount(), 0)
+    })
+
+    it('should not record completed', async () => {
+      const insertOneMock = mock.fn()
+      const migration = createMigration()
+      const inst = createInstance({
+        db: {
+          collection: mock.fn(() => ({
+            find: mock.fn(() => ({ toArray: async () => [] })),
+            insertOne: insertOneMock
+          }))
+        }
+      })
+      await inst.executeWithProxy(migration)
+
+      assert.equal(insertOneMock.mock.callCount(), 0)
+    })
+  })
+
+  describe('recordCompleted', () => {
     it('should query the migrations collection', async () => {
       const docs = [{ module: 'mod-a', version: '1.0.0' }]
       const collectionMock = mock.fn(() => ({
