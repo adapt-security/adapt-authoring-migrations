@@ -375,15 +375,24 @@ describe('MigrationsModule', () => {
       assert.deepEqual(inst.executeMigration.mock.calls[0].arguments[1], { dryRun: true })
     })
 
-    it('should log warning when dryRun without transaction support', async () => {
+    it('should log execution mode', async () => {
+      const inst = createInstance({ useTransactions: true })
+      inst.executeMigration = mock.fn()
+      inst.discoverMigrations = mock.fn(async () => [createMigration()])
+      await inst.runMigrations()
+
+      const infoLogs = inst.log.mock.calls.filter(c => c.arguments[0] === 'info')
+      assert.ok(infoLogs.some(c => c.arguments[1].includes('(transactions)')))
+    })
+
+    it('should log read-only proxy mode when dryRun without transactions', async () => {
       const inst = createInstance({ useTransactions: false })
       inst.executeMigration = mock.fn()
       inst.discoverMigrations = mock.fn(async () => [createMigration()])
       await inst.runMigrations({ dryRun: true })
 
-      const warnings = inst.log.mock.calls.filter(c => c.arguments[0] === 'warn')
-      assert.equal(warnings.length, 1)
-      assert.ok(warnings[0].arguments[1].includes('read-only proxy'))
+      const infoLogs = inst.log.mock.calls.filter(c => c.arguments[0] === 'info')
+      assert.ok(infoLogs.some(c => c.arguments[1].includes('(read-only proxy)')))
     })
 
     it('should stop on migration failure', async () => {
