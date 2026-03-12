@@ -277,6 +277,7 @@ describe('MigrationsModule', () => {
       executeWithProxy: proto.executeWithProxy,
       filterPending: proto.filterPending,
       getCompletedMigrations: proto.getCompletedMigrations,
+      getStatus: proto.getStatus,
       recordCompleted: proto.recordCompleted,
       ...overrides
     }
@@ -566,6 +567,46 @@ describe('MigrationsModule', () => {
       await inst.executeWithProxy(migration)
 
       assert.equal(insertOneMock.mock.callCount(), 0)
+    })
+  })
+
+  describe('getStatus', () => {
+    it('should return status for all discovered migrations', async () => {
+      const completedAt = new Date('2026-01-01')
+      const inst = createInstance()
+      inst.discoverMigrations = mock.fn(async () => [
+        { module: 'mod-a', version: '1.0.0', description: 'first' },
+        { module: 'mod-a', version: '2.0.0', description: 'second' }
+      ])
+      inst.getCompletedMigrations = mock.fn(async () => [
+        { module: 'mod-a', version: '1.0.0', completedAt }
+      ])
+      const status = await inst.getStatus()
+
+      assert.equal(status.length, 2)
+      assert.deepEqual(status[0], {
+        module: 'mod-a',
+        version: '1.0.0',
+        description: 'first',
+        status: 'complete',
+        completedAt
+      })
+      assert.deepEqual(status[1], {
+        module: 'mod-a',
+        version: '2.0.0',
+        description: 'second',
+        status: 'pending',
+        completedAt: null
+      })
+    })
+
+    it('should return empty array when no migrations exist', async () => {
+      const inst = createInstance()
+      inst.discoverMigrations = mock.fn(async () => [])
+      inst.getCompletedMigrations = mock.fn(async () => [])
+      const status = await inst.getStatus()
+
+      assert.deepEqual(status, [])
     })
   })
 
