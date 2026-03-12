@@ -220,14 +220,91 @@ describe('MigrationDSL', () => {
       assert.deepEqual(db.renameCollection.mock.calls[0].arguments, ['old', 'new'])
     })
 
-    it('should call fn(db) for runCommand', async () => {
+    it('should call fn(db, options) for runCommand', async () => {
       const commandFn = mock.fn()
       const db = {}
       const dsl = new MigrationDSL()
       dsl.runCommand(commandFn)
-      await dsl.execute(db)
+      const options = { dryRun: true }
+      await dsl.execute(db, options)
 
       assert.equal(commandFn.mock.calls[0].arguments[0], db)
+      assert.equal(commandFn.mock.calls[0].arguments[1], options)
+    })
+
+    it('should skip replaceOne for mutate when dryRun is true', async () => {
+      const replaceOneMock = mock.fn()
+      const db = {
+        collection: mock.fn(() => ({
+          find: mock.fn(() => ({ toArray: async () => [{ _id: '1', name: 'old' }] })),
+          replaceOne: replaceOneMock
+        }))
+      }
+      const dsl = new MigrationDSL()
+      dsl.where({ collection: 'test' }).mutate(doc => { doc.name = 'new' })
+      await dsl.execute(db, { dryRun: true })
+
+      assert.equal(replaceOneMock.mock.callCount(), 0)
+    })
+
+    it('should skip setIndex, dropIndex, and renameCollection when dryRun is true', async () => {
+      const createIndexMock = mock.fn()
+      const dropIndexMock = mock.fn()
+      const renameCollectionMock = mock.fn()
+      const db = {
+        collection: mock.fn(() => ({
+          createIndex: createIndexMock,
+          dropIndex: dropIndexMock
+        })),
+        renameCollection: renameCollectionMock
+      }
+      const dsl = new MigrationDSL()
+      dsl.setIndex('a', { x: 1 })
+      dsl.dropIndex('a', 'old_idx')
+      dsl.renameCollection('b', 'c')
+      await dsl.execute(db, { dryRun: true })
+
+      assert.equal(createIndexMock.mock.callCount(), 0)
+      assert.equal(dropIndexMock.mock.callCount(), 0)
+      assert.equal(renameCollectionMock.mock.callCount(), 0)
+    })
+
+    it('should log skipped operations when dryRun is true', async () => {
+      const db = {
+        collection: mock.fn(() => ({
+          find: mock.fn(() => ({ toArray: async () => [{ _id: '1' }, { _id: '2' }] }))
+        })),
+        renameCollection: mock.fn()
+      }
+      const logMock = mock.fn()
+      const dsl = new MigrationDSL()
+      dsl.where({ collection: 'test' }).mutate(() => {})
+      dsl.setIndex('users', { email: 1 })
+      dsl.dropIndex('users', 'old_idx')
+      dsl.renameCollection('a', 'b')
+      dsl.runCommand(() => {})
+      await dsl.execute(db, { dryRun: true, log: logMock })
+
+      const messages = logMock.mock.calls.map(c => c.arguments[1])
+      assert.ok(messages.some(m => m.includes('would mutate 2 doc(s) in test')))
+      assert.ok(messages.some(m => m.includes('would create index on users')))
+      assert.ok(messages.some(m => m.includes('would drop index old_idx on users')))
+      assert.ok(messages.some(m => m.includes('would rename collection a')))
+      assert.ok(messages.some(m => m.includes('runCommand')))
+    })
+
+    it('should still run check when dryRun is true', async () => {
+      const db = {
+        collection: mock.fn(() => ({
+          find: mock.fn(() => ({ toArray: async () => [{ _id: '1', valid: true }] }))
+        }))
+      }
+      const checkFn = mock.fn()
+      const dsl = new MigrationDSL()
+      dsl.where({ collection: 'test' }).check(checkFn)
+      await dsl.execute(db, { dryRun: true })
+
+      assert.equal(checkFn.mock.callCount(), 1)
     })
 
     it('should execute operations in order', async () => {
@@ -367,6 +444,33 @@ describe('MigrationsModule', () => {
       assert.equal(recorded.version, '1.0.0')
       assert.equal(recorded.description, 'test migration')
       assert.ok(recorded.completedAt instanceof Date)
+    })
+
+    it('should not record completed migrations when dryRun is true', async () => {
+      const insertOneMock = mock.fn()
+      const executeMock = mock.fn()
+      const inst = createInstance({
+        db: {
+          collection: mock.fn(() => ({
+            find: mock.fn(() => ({ toArray: async () => [] })),
+            insertOne: insertOneMock
+          }))
+        }
+      })
+      inst.discoverMigrations = mock.fn(async () => [
+        {
+          module: 'mod-a',
+          version: '1.0.0',
+          description: 'test migration',
+          dsl: { execute: executeMock }
+        }
+      ])
+      await inst.runMigrations({ dryRun: true })
+
+      assert.equal(executeMock.mock.callCount(), 1)
+      assert.equal(executeMock.mock.calls[0].arguments[1].dryRun, true)
+      assert.equal(typeof executeMock.mock.calls[0].arguments[1].log, 'function')
+      assert.equal(insertOneMock.mock.callCount(), 0)
     })
 
     it('should stop on migration failure', async () => {
