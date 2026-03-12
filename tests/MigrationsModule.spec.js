@@ -225,11 +225,29 @@ describe('MigrationDSL', () => {
       const db = {}
       const dsl = new MigrationDSL()
       dsl.runCommand(commandFn)
-      const options = { dryRun: true }
-      await dsl.execute(db, options)
+      await dsl.execute(db)
 
       assert.equal(commandFn.mock.calls[0].arguments[0], db)
-      assert.equal(commandFn.mock.calls[0].arguments[1], options)
+      assert.deepEqual(commandFn.mock.calls[0].arguments[1], {})
+    })
+
+    it('should pass a read-only db proxy to runCommand when dryRun is true', async () => {
+      const insertOneMock = mock.fn()
+      const db = {
+        collection: mock.fn(() => ({
+          insertOne: insertOneMock,
+          find: mock.fn(() => ({ toArray: async () => [] }))
+        }))
+      }
+      const commandFn = mock.fn(async (cmdDb) => {
+        await cmdDb.collection('test').insertOne({ x: 1 })
+      })
+      const dsl = new MigrationDSL()
+      dsl.runCommand(commandFn)
+      await dsl.execute(db, { dryRun: true, log: mock.fn() })
+
+      assert.equal(insertOneMock.mock.callCount(), 0)
+      assert.notEqual(commandFn.mock.calls[0].arguments[0], db)
     })
 
     it('should skip replaceOne for mutate when dryRun is true', async () => {
@@ -290,7 +308,6 @@ describe('MigrationDSL', () => {
       assert.ok(messages.some(m => m.includes('would create index on users')))
       assert.ok(messages.some(m => m.includes('would drop index old_idx on users')))
       assert.ok(messages.some(m => m.includes('would rename collection a')))
-      assert.ok(messages.some(m => m.includes('runCommand')))
     })
 
     it('should still run check when dryRun is true', async () => {
