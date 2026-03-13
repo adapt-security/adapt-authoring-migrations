@@ -1,6 +1,6 @@
 {
   "name": "adapt-authoring-migrations",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Module for running database migrations on app startup",
   "homepage": "https://github.com/adapt-security/adapt-authoring-migrations",
   "license": "GPL-3.0",
