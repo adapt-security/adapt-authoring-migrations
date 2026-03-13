@@ -11,6 +11,17 @@
           "description": "Returns all discovered migrations with their completion status."
         }
       }
+    },
+    {
+      "route": "/reset",
+      "handlers": { "post": "resetHandler" },
+      "permissions": { "post": ["write:migrations"] },
+      "meta": {
+        "post": {
+          "summary": "Reset a migration",
+          "description": "Removes the completion record for a migration so it will re-run on next start."
+        }
+      }
     }
   ]
 }

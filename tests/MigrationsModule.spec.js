@@ -406,6 +406,19 @@ describe('MigrationsModule', () => {
       await assert.rejects(() => inst.runMigrations(), { message: 'boom' })
       assert.equal(inst.executeMigration.mock.callCount(), 1)
     })
+
+    it('should skip completed check in dryRun mode', async () => {
+      const inst = createInstance()
+      inst.executeMigration = mock.fn()
+      inst.discoverMigrations = mock.fn(async () => [createMigration()])
+      inst.getCompletedMigrations = mock.fn(async () => [
+        { module: 'mod-a', version: '1.0.0' }
+      ])
+      await inst.runMigrations({ dryRun: true })
+
+      assert.equal(inst.getCompletedMigrations.mock.callCount(), 0)
+      assert.equal(inst.executeMigration.mock.callCount(), 1)
+    })
   })
 
   describe('executeMigration', () => {
@@ -648,6 +661,72 @@ describe('MigrationsModule', () => {
       assert.equal(doc.version, '1.0.0')
       assert.equal(doc.description, 'test')
       assert.ok(doc.completedAt instanceof Date)
+    })
+  })
+
+  describe('resetHandler', () => {
+    function createRes () {
+      const res = {
+        statusCode: 200,
+        status: mock.fn(function (code) { res.statusCode = code; return res }),
+        json: mock.fn()
+      }
+      return res
+    }
+
+    it('should return 400 when module is missing', async () => {
+      const inst = createInstance()
+      inst.resetHandler = proto.resetHandler
+      const res = createRes()
+      await inst.resetHandler({ body: { version: '1.0.0' } }, res, mock.fn())
+
+      assert.equal(res.statusCode, 400)
+    })
+
+    it('should return 400 when version is missing', async () => {
+      const inst = createInstance()
+      inst.resetHandler = proto.resetHandler
+      const res = createRes()
+      await inst.resetHandler({ body: { module: 'mod-a' } }, res, mock.fn())
+
+      assert.equal(res.statusCode, 400)
+    })
+
+    it('should return 404 when no record found', async () => {
+      const deleteOneMock = mock.fn(async () => ({ deletedCount: 0 }))
+      const inst = createInstance({
+        db: { collection: mock.fn(() => ({ deleteOne: deleteOneMock })) }
+      })
+      inst.resetHandler = proto.resetHandler
+      const res = createRes()
+      await inst.resetHandler({ body: { module: 'mod-a', version: '1.0.0' } }, res, mock.fn())
+
+      assert.equal(res.statusCode, 404)
+    })
+
+    it('should delete the record and return success', async () => {
+      const deleteOneMock = mock.fn(async () => ({ deletedCount: 1 }))
+      const collectionMock = mock.fn(() => ({ deleteOne: deleteOneMock }))
+      const inst = createInstance({ db: { collection: collectionMock } })
+      inst.resetHandler = proto.resetHandler
+      const res = createRes()
+      await inst.resetHandler({ body: { module: 'mod-a', version: '1.0.0' } }, res, mock.fn())
+
+      assert.equal(collectionMock.mock.calls[0].arguments[0], 'migrations')
+      assert.deepEqual(deleteOneMock.mock.calls[0].arguments[0], { module: 'mod-a', version: '1.0.0' })
+      assert.equal(res.statusCode, 200)
+    })
+
+    it('should call next on error', async () => {
+      const inst = createInstance({
+        db: { collection: mock.fn(() => { throw new Error('db error') }) }
+      })
+      inst.resetHandler = proto.resetHandler
+      const next = mock.fn()
+      await inst.resetHandler({ body: { module: 'mod-a', version: '1.0.0' } }, createRes(), next)
+
+      assert.equal(next.mock.callCount(), 1)
+      assert.equal(next.mock.calls[0].arguments[0].message, 'db error')
     })
   })
 })
