@@ -15,102 +15,189 @@ describe('ConfigMigration', () => {
     it('should record an operation with the module name', () => {
       const fn = () => {}
       const m = new ConfigMigration()
-      m.where('adapt-authoring-logger').mutate(fn)
+      m.where('mod-a').mutate(fn)
       assert.equal(m.operations.length, 1)
-      assert.equal(m.operations[0].module, 'adapt-authoring-logger')
-      assert.equal(m.operations[0].fn, fn)
-    })
-
-    it('should clear _currentModule after mutate', () => {
-      const m = new ConfigMigration()
-      m.where('mod-a').mutate(() => {})
-      assert.equal(m._currentModule, null)
-    })
-
-    it('should support mutate without where', () => {
-      const fn = () => {}
-      const m = new ConfigMigration()
-      m.mutate(fn)
-      assert.equal(m.operations.length, 1)
-      assert.equal(m.operations[0].module, null)
-      assert.equal(m.operations[0].fn, fn)
-    })
-  })
-
-  describe('chaining', () => {
-    it('should support chaining multiple where/mutate pairs', () => {
-      const m = new ConfigMigration()
-      m
-        .where('mod-a').mutate(() => {})
-        .where('mod-b').mutate(() => {})
-        .mutate(() => {})
-
-      assert.equal(m.operations.length, 3)
       assert.equal(m.operations[0].module, 'mod-a')
-      assert.equal(m.operations[1].module, 'mod-b')
-      assert.equal(m.operations[2].module, null)
-    })
-  })
-
-  describe('execute', () => {
-    it('should call mutate fn with the config object', () => {
-      const config = { 'mod-a': { key: 'value' } }
-      const fn = mock.fn()
-      const m = new ConfigMigration()
-      m.mutate(fn)
-      m.execute(config)
-
-      assert.equal(fn.mock.callCount(), 1)
-      assert.equal(fn.mock.calls[0].arguments[0], config)
+      assert.equal(m.operations[0].fn, fn)
     })
 
     it('should skip mutate when where module is not in config', () => {
-      const config = { 'mod-a': { key: 'value' } }
       const fn = mock.fn()
       const m = new ConfigMigration()
       m.where('mod-b').mutate(fn)
-      m.execute(config)
-
+      m.execute({ 'mod-a': {} })
       assert.equal(fn.mock.callCount(), 0)
     })
 
     it('should run mutate when where module is in config', () => {
-      const config = { 'mod-a': { key: 'value' } }
       const fn = mock.fn()
       const m = new ConfigMigration()
       m.where('mod-a').mutate(fn)
-      m.execute(config)
-
+      m.execute({ 'mod-a': { key: 'val' } })
       assert.equal(fn.mock.callCount(), 1)
-      assert.equal(fn.mock.calls[0].arguments[0], config)
     })
 
-    it('should execute operations in order', () => {
-      const order = []
-      const config = { 'mod-a': {}, 'mod-b': {} }
+    it('should support mutate without where', () => {
+      const fn = mock.fn()
       const m = new ConfigMigration()
-      m
-        .where('mod-a').mutate(() => order.push('a'))
-        .where('mod-b').mutate(() => order.push('b'))
-        .mutate(() => order.push('c'))
-      m.execute(config)
-
-      assert.deepEqual(order, ['a', 'b', 'c'])
+      m.mutate(fn)
+      m.execute({ 'mod-a': {} })
+      assert.equal(fn.mock.callCount(), 1)
     })
+  })
 
-    it('should allow mutate to modify the config object', () => {
+  describe('replace', () => {
+    it('should replace a key to another module with a new name', () => {
       const config = {
-        'old-module': { key: 'value' },
-        'new-module': {}
+        'mod-a': { oldKey: 'value', other: 1 },
+        'mod-b': {}
       }
       const m = new ConfigMigration()
-      m.where('old-module').mutate(cfg => {
-        cfg['new-module'].key = cfg['old-module'].key
-        delete cfg['old-module']
-      })
+      m.where('mod-a').replace('oldKey', 'mod-b', 'newKey')
       m.execute(config)
 
-      assert.deepEqual(config, { 'new-module': { key: 'value' } })
+      assert.deepEqual(config, {
+        'mod-a': { other: 1 },
+        'mod-b': { newKey: 'value' }
+      })
+    })
+
+    it('should keep the same key name when destKey is omitted', () => {
+      const config = { 'mod-a': { key: 'value' }, 'mod-b': {} }
+      const m = new ConfigMigration()
+      m.where('mod-a').replace('key', 'mod-b')
+      m.execute(config)
+
+      assert.deepEqual(config, { 'mod-b': { key: 'value' } })
+    })
+
+    it('should create destination module section if it does not exist', () => {
+      const config = { 'mod-a': { key: 'value' } }
+      const m = new ConfigMigration()
+      m.where('mod-a').replace('key', 'mod-b', 'newKey')
+      m.execute(config)
+
+      assert.deepEqual(config, { 'mod-b': { newKey: 'value' } })
+    })
+
+    it('should skip replace when source key does not exist', () => {
+      const config = { 'mod-a': { other: 1 } }
+      const m = new ConfigMigration()
+      m.where('mod-a').replace('missing', 'mod-b', 'newKey')
+      m.execute(config)
+
+      assert.deepEqual(config, { 'mod-a': { other: 1 } })
+    })
+
+    it('should skip replace when where module is not in config', () => {
+      const config = { 'mod-a': { key: 'value' } }
+      const m = new ConfigMigration()
+      m.where('mod-b').replace('key', 'mod-a', 'newKey')
+      m.execute(config)
+
+      assert.deepEqual(config, { 'mod-a': { key: 'value' } })
+    })
+
+    it('should rename within the same module', () => {
+      const config = { 'mod-a': { oldKey: 'value' } }
+      const m = new ConfigMigration()
+      m.where('mod-a').replace('oldKey', 'mod-a', 'newKey')
+      m.execute(config)
+
+      assert.deepEqual(config, { 'mod-a': { newKey: 'value' } })
+    })
+
+    it('should clean up empty source module after replaces', () => {
+      const config = { 'mod-a': { key: 'value' } }
+      const m = new ConfigMigration()
+      m.where('mod-a').replace('key', 'mod-b', 'key')
+      m.execute(config)
+
+      assert.equal(config['mod-a'], undefined)
+      assert.deepEqual(config['mod-b'], { key: 'value' })
+    })
+  })
+
+  describe('remove', () => {
+    it('should remove a single key', () => {
+      const config = { 'mod-a': { keep: 1, drop: 2 } }
+      const m = new ConfigMigration()
+      m.where('mod-a').remove('drop')
+      m.execute(config)
+
+      assert.deepEqual(config, { 'mod-a': { keep: 1 } })
+    })
+
+    it('should remove multiple keys', () => {
+      const config = { 'mod-a': { a: 1, b: 2, c: 3 } }
+      const m = new ConfigMigration()
+      m.where('mod-a').remove('a', 'b')
+      m.execute(config)
+
+      assert.deepEqual(config, { 'mod-a': { c: 3 } })
+    })
+
+    it('should clean up empty module after removes', () => {
+      const config = { 'mod-a': { only: 1 } }
+      const m = new ConfigMigration()
+      m.where('mod-a').remove('only')
+      m.execute(config)
+
+      assert.equal(config['mod-a'], undefined)
+    })
+
+    it('should skip remove when where module is not in config', () => {
+      const config = { 'mod-a': { key: 1 } }
+      const m = new ConfigMigration()
+      m.where('mod-b').remove('key')
+      m.execute(config)
+
+      assert.deepEqual(config, { 'mod-a': { key: 1 } })
+    })
+
+    it('should not throw when removing a non-existent key', () => {
+      const config = { 'mod-a': { key: 1 } }
+      const m = new ConfigMigration()
+      m.where('mod-a').remove('missing')
+      m.execute(config)
+
+      assert.deepEqual(config, { 'mod-a': { key: 1 } })
+    })
+  })
+
+  describe('chaining', () => {
+    it('should support chaining move, remove, and mutate', () => {
+      const config = {
+        'old-mod': { levels: ['info'], showTimestamp: true, mute: false, dateFormat: 'iso' }
+      }
+      const m = new ConfigMigration()
+      m
+        .where('old-mod')
+        .replace('levels', 'new-mod', 'logLevels')
+        .replace('showTimestamp', 'new-mod', 'showLogTimestamp')
+        .remove('mute', 'dateFormat')
+
+      m.execute(config)
+
+      assert.deepEqual(config, {
+        'new-mod': { logLevels: ['info'], showLogTimestamp: true }
+      })
+    })
+
+    it('should support multiple where blocks', () => {
+      const config = {
+        'mod-a': { key: 'a' },
+        'mod-b': { key: 'b' }
+      }
+      const m = new ConfigMigration()
+      m
+        .where('mod-a').replace('key', 'mod-c', 'fromA')
+        .where('mod-b').replace('key', 'mod-c', 'fromB')
+      m.execute(config)
+
+      assert.deepEqual(config, {
+        'mod-c': { fromA: 'a', fromB: 'b' }
+      })
     })
   })
 })

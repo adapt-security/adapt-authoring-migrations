@@ -154,7 +154,7 @@ export default function (migration) {
 
 ## Config file migrations
 
-Config file migrations transform the application's `conf/*.config.js` files. The framework automatically discovers config files, loads each one, runs the migration's operations, and writes back any changes. Each file must default-export a function that receives a migration object with `describe()`, `where()`, and `mutate()`:
+Config file migrations transform the application's `conf/*.config.js` files. The framework automatically discovers config files, loads each one, runs the migration's operations, and writes back any changes. Each file must default-export a function that receives a migration object:
 
 ```javascript
 export default function (migration) {
@@ -162,15 +162,9 @@ export default function (migration) {
 
   migration
     .where('adapt-authoring-logger')
-    .mutate(config => {
-      const logger = config['adapt-authoring-logger']
-      const core = config['adapt-authoring-core'] ||= {}
-      core.logLevels = logger.levels
-      delete logger.levels
-      if (!Object.keys(logger).length) {
-        delete config['adapt-authoring-logger']
-      }
-    })
+    .replace('levels', 'adapt-authoring-core', 'logLevels')
+    .replace('showTimestamp', 'adapt-authoring-core', 'showLogTimestamp')
+    .remove('mute', 'dateFormat')
 }
 ```
 
@@ -178,25 +172,45 @@ export default function (migration) {
 
 #### where(moduleName)
 
-Guards the following `mutate()` — if the named module section does not exist in the config file, the mutate is skipped. This avoids running transforms on config files that don't have the relevant section.
+Sets the source module for subsequent operations. If the named module section does not exist in a config file, all operations for that `where()` block are skipped.
 
 ```javascript
 migration.where('adapt-authoring-logger')
 ```
 
+#### replace(key, destModule, destKey?)
+
+Replaces a config key in the current `where()` module with a key in the destination module. If `destKey` is omitted, the key name is preserved. Creates the destination module section if it doesn't exist. Use the same module name for source and destination to rename a key within a section.
+
+```javascript
+migration.replace('levels', 'adapt-authoring-core', 'logLevels')  // replace + rename
+migration.replace('defaultLang', 'adapt-authoring-core')           // replace, keep name
+migration.replace('oldKey', 'adapt-authoring-core', 'newKey')      // rename within same section
+```
+
+#### remove(...keys)
+
+Removes one or more keys from the current `where()` module section.
+
+```javascript
+migration.remove('mute', 'dateFormat')
+```
+
 #### mutate(fn)
 
-Registers a function that receives the full config object and modifies it in place. Can be used with or without a preceding `where()`. The framework handles loading and writing — the migration only needs to transform the data.
+Escape hatch for operations not covered by `replace` and `remove`. Receives the full config object and modifies it in place.
 
 ```javascript
 migration.mutate(config => {
-  config['adapt-authoring-core'].newKey = 'value'
+  config['adapt-authoring-core'].newKey = computeValue()
 })
 ```
 
+Empty module sections are automatically cleaned up after all operations run.
+
 ### Chaining
 
-Like data migrations, config migrations support chaining multiple `where`/`mutate` pairs:
+All DSL methods return `this`, so you can chain operations and use multiple `where()` blocks:
 
 ```javascript
 export default function (migration) {
@@ -204,17 +218,11 @@ export default function (migration) {
 
   migration
     .where('adapt-authoring-logger')
-    .mutate(config => {
-      const core = config['adapt-authoring-core'] ||= {}
-      core.logLevels = config['adapt-authoring-logger'].levels
-      delete config['adapt-authoring-logger']
-    })
+    .replace('levels', 'adapt-authoring-core', 'logLevels')
+    .replace('showTimestamp', 'adapt-authoring-core', 'showLogTimestamp')
+    .remove('mute', 'dateFormat')
     .where('adapt-authoring-lang')
-    .mutate(config => {
-      const core = config['adapt-authoring-core'] ||= {}
-      core.defaultLang = config['adapt-authoring-lang'].defaultLang
-      delete config['adapt-authoring-lang']
-    })
+    .replace('defaultLang', 'adapt-authoring-core')
 }
 ```
 
