@@ -172,6 +172,7 @@ export default function (migration) {
 
 The `run()` callback receives a context object with:
 
+- **`appDir`** — absolute path to the application root directory (where `conf/*.config.js` files live)
 - **`readFile(relativePath)`** — reads a file relative to the module's root directory, returns a string
 - **`writeFile(relativePath, contents)`** — writes a file relative to the module's root directory. In dry-run mode, logs the intended write without persisting
 - **`log(level, message)`** — logs a message at the given level

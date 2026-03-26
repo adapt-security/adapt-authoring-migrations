@@ -269,6 +269,7 @@ describe('MigrationsModule', () => {
           insertOne: mock.fn()
         }))
       },
+      app: { rootDir: '/tmp/app' },
       log: mock.fn(),
       useTransactions: false,
       runMigrations: proto.runMigrations,

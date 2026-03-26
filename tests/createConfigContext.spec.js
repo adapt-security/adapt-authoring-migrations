@@ -64,5 +64,10 @@ describe('createConfigContext', () => {
       const ctx = createConfigContext(tmpDir, { dryRun: false, log })
       assert.equal(ctx.log, log)
     })
+
+    it('should expose appDir', () => {
+      const ctx = createConfigContext(tmpDir, { appDir: '/app/root', dryRun: false, log: mock.fn() })
+      assert.equal(ctx.appDir, '/app/root')
+    })
   })
 })
