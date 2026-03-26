@@ -1,14 +1,14 @@
 import { describe, it, mock } from 'node:test'
 import assert from 'node:assert/strict'
-import MigrationDSL from '../lib/MigrationDSL.js'
+import DataMigration from '../lib/DataMigration.js'
 import MigrationsModule from '../lib/MigrationsModule.js'
 
-// ── MigrationDSL ────────────────────────────────────────────────────
+// ── DataMigration ────────────────────────────────────────────────────
 
-describe('MigrationDSL', () => {
+describe('DataMigration', () => {
   describe('describe', () => {
     it('should set the description', () => {
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl.describe('test migration')
       assert.equal(dsl.description, 'test migration')
     })
@@ -16,7 +16,7 @@ describe('MigrationDSL', () => {
 
   describe('where + mutate', () => {
     it('should record a mutate operation with the query', () => {
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       const fn = () => {}
       dsl.where({ collection: 'users', active: true }).mutate(fn)
       assert.equal(dsl.operations.length, 1)
@@ -26,7 +26,7 @@ describe('MigrationDSL', () => {
     })
 
     it('should clear _currentQuery after mutate', () => {
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl.where({ collection: 'x' }).mutate(() => {})
       assert.equal(dsl._currentQuery, null)
     })
@@ -34,7 +34,7 @@ describe('MigrationDSL', () => {
 
   describe('where + check', () => {
     it('should record a check operation with the query', () => {
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       const fn = () => {}
       dsl.where({ collection: 'items', status: 'active' }).check(fn)
       assert.equal(dsl.operations.length, 1)
@@ -45,7 +45,7 @@ describe('MigrationDSL', () => {
 
   describe('setIndex', () => {
     it('should record a setIndex operation', () => {
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl.setIndex('users', { email: 1 }, { unique: true })
       assert.equal(dsl.operations.length, 1)
       assert.deepEqual(dsl.operations[0], {
@@ -57,7 +57,7 @@ describe('MigrationDSL', () => {
     })
 
     it('should work without options', () => {
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl.setIndex('logs', { createdAt: -1 })
       assert.equal(dsl.operations[0].options, undefined)
     })
@@ -65,7 +65,7 @@ describe('MigrationDSL', () => {
 
   describe('dropIndex', () => {
     it('should record a dropIndex operation', () => {
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl.dropIndex('users', 'email_1')
       assert.deepEqual(dsl.operations[0], {
         type: 'dropIndex',
@@ -77,7 +77,7 @@ describe('MigrationDSL', () => {
 
   describe('renameCollection', () => {
     it('should record a renameCollection operation', () => {
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl.renameCollection('old_name', 'new_name')
       assert.deepEqual(dsl.operations[0], {
         type: 'renameCollection',
@@ -90,7 +90,7 @@ describe('MigrationDSL', () => {
   describe('runCommand', () => {
     it('should record a runCommand operation', () => {
       const fn = async () => {}
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl.runCommand(fn)
       assert.equal(dsl.operations[0].type, 'runCommand')
       assert.equal(dsl.operations[0].fn, fn)
@@ -99,7 +99,7 @@ describe('MigrationDSL', () => {
 
   describe('chaining', () => {
     it('should support chaining multiple operations', () => {
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl
         .where({ collection: 'a' }).mutate(() => {})
         .where({ collection: 'b' }).check(() => {})
@@ -131,7 +131,7 @@ describe('MigrationDSL', () => {
           replaceOne: mock.fn(async (filter, doc) => { replacedDocs.push({ filter, doc }) })
         }))
       }
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl.where({ collection: 'test', name: 'old' }).mutate(doc => { doc.name = 'new' })
       await dsl.execute(db)
 
@@ -151,7 +151,7 @@ describe('MigrationDSL', () => {
           replaceOne: mock.fn()
         }))
       }
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl.where({ collection: 'test', active: true, status: 'pending' }).mutate(() => {})
       await dsl.execute(db)
 
@@ -164,7 +164,7 @@ describe('MigrationDSL', () => {
           find: mock.fn(() => ({ toArray: async () => [{ _id: '1', invalid: true }] }))
         }))
       }
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl.where({ collection: 'test' }).check(doc => {
         if (doc.invalid) throw new Error('validation failed')
       })
@@ -179,7 +179,7 @@ describe('MigrationDSL', () => {
       const db = {
         collection: mock.fn(() => ({ createIndex: createIndexMock }))
       }
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl.setIndex('users', { email: 1 }, { unique: true })
       await dsl.execute(db)
 
@@ -192,7 +192,7 @@ describe('MigrationDSL', () => {
       const db = {
         collection: mock.fn(() => ({ createIndex: createIndexMock }))
       }
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl.setIndex('users', { email: 1 })
       await dsl.execute(db)
 
@@ -204,7 +204,7 @@ describe('MigrationDSL', () => {
       const db = {
         collection: mock.fn(() => ({ dropIndex: dropIndexMock }))
       }
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl.dropIndex('users', 'email_1')
       await dsl.execute(db)
 
@@ -213,7 +213,7 @@ describe('MigrationDSL', () => {
 
     it('should call db.renameCollection for renameCollection', async () => {
       const db = { renameCollection: mock.fn() }
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl.renameCollection('old', 'new')
       await dsl.execute(db)
 
@@ -223,7 +223,7 @@ describe('MigrationDSL', () => {
     it('should call fn(db) for runCommand', async () => {
       const commandFn = mock.fn()
       const db = {}
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl.runCommand(commandFn)
       await dsl.execute(db)
 
@@ -245,7 +245,7 @@ describe('MigrationDSL', () => {
         })),
         renameCollection: mock.fn(async () => { order.push('rename') })
       }
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl.where({ collection: 'a' }).mutate(() => {})
       dsl.setIndex('a', { x: 1 })
       dsl.renameCollection('b', 'c')
