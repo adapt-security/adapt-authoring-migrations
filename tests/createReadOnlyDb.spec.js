@@ -1,6 +1,6 @@
 import { describe, it, mock } from 'node:test'
 import assert from 'node:assert/strict'
-import createReadOnlyDb from '../lib/createReadOnlyDb.js'
+import createReadOnlyDb from '../lib/utils/createReadOnlyDb.js'
 
 function createMockDb () {
   const collectionMethods = {
@@ -12,6 +12,10 @@ function createMockDb () {
     deleteOne: mock.fn(),
     deleteMany: mock.fn(),
     drop: mock.fn(),
+    createIndex: mock.fn(),
+    createIndexes: mock.fn(),
+    dropIndex: mock.fn(),
+    dropIndexes: mock.fn(),
     find: mock.fn(() => ({ toArray: async () => [{ _id: '1' }] })),
     findOne: mock.fn(async () => ({ _id: '1' })),
     countDocuments: mock.fn(async () => 5),
@@ -28,7 +32,7 @@ function createMockDb () {
 
 describe('createReadOnlyDb', () => {
   describe('collection write methods', () => {
-    const writeMethods = ['insertOne', 'insertMany', 'updateOne', 'updateMany', 'replaceOne', 'deleteOne', 'deleteMany', 'drop']
+    const writeMethods = ['insertOne', 'insertMany', 'updateOne', 'updateMany', 'replaceOne', 'deleteOne', 'deleteMany', 'drop', 'createIndex', 'createIndexes', 'dropIndex', 'dropIndexes']
 
     for (const method of writeMethods) {
       it(`should intercept ${method} and not call the real method`, async () => {

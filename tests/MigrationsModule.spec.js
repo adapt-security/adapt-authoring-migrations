@@ -1,14 +1,14 @@
 import { describe, it, mock } from 'node:test'
 import assert from 'node:assert/strict'
-import MigrationDSL from '../lib/MigrationDSL.js'
+import DataMigration from '../lib/DataMigration.js'
 import MigrationsModule from '../lib/MigrationsModule.js'
 
-// ── MigrationDSL ────────────────────────────────────────────────────
+// ── DataMigration ────────────────────────────────────────────────────
 
-describe('MigrationDSL', () => {
+describe('DataMigration', () => {
   describe('describe', () => {
     it('should set the description', () => {
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl.describe('test migration')
       assert.equal(dsl.description, 'test migration')
     })
@@ -16,7 +16,7 @@ describe('MigrationDSL', () => {
 
   describe('where + mutate', () => {
     it('should record a mutate operation with the query', () => {
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       const fn = () => {}
       dsl.where({ collection: 'users', active: true }).mutate(fn)
       assert.equal(dsl.operations.length, 1)
@@ -26,7 +26,7 @@ describe('MigrationDSL', () => {
     })
 
     it('should clear _currentQuery after mutate', () => {
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl.where({ collection: 'x' }).mutate(() => {})
       assert.equal(dsl._currentQuery, null)
     })
@@ -34,7 +34,7 @@ describe('MigrationDSL', () => {
 
   describe('where + check', () => {
     it('should record a check operation with the query', () => {
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       const fn = () => {}
       dsl.where({ collection: 'items', status: 'active' }).check(fn)
       assert.equal(dsl.operations.length, 1)
@@ -45,7 +45,7 @@ describe('MigrationDSL', () => {
 
   describe('setIndex', () => {
     it('should record a setIndex operation', () => {
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl.setIndex('users', { email: 1 }, { unique: true })
       assert.equal(dsl.operations.length, 1)
       assert.deepEqual(dsl.operations[0], {
@@ -57,7 +57,7 @@ describe('MigrationDSL', () => {
     })
 
     it('should work without options', () => {
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl.setIndex('logs', { createdAt: -1 })
       assert.equal(dsl.operations[0].options, undefined)
     })
@@ -65,7 +65,7 @@ describe('MigrationDSL', () => {
 
   describe('dropIndex', () => {
     it('should record a dropIndex operation', () => {
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl.dropIndex('users', 'email_1')
       assert.deepEqual(dsl.operations[0], {
         type: 'dropIndex',
@@ -77,7 +77,7 @@ describe('MigrationDSL', () => {
 
   describe('renameCollection', () => {
     it('should record a renameCollection operation', () => {
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl.renameCollection('old_name', 'new_name')
       assert.deepEqual(dsl.operations[0], {
         type: 'renameCollection',
@@ -90,7 +90,7 @@ describe('MigrationDSL', () => {
   describe('runCommand', () => {
     it('should record a runCommand operation', () => {
       const fn = async () => {}
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl.runCommand(fn)
       assert.equal(dsl.operations[0].type, 'runCommand')
       assert.equal(dsl.operations[0].fn, fn)
@@ -99,7 +99,7 @@ describe('MigrationDSL', () => {
 
   describe('chaining', () => {
     it('should support chaining multiple operations', () => {
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl
         .where({ collection: 'a' }).mutate(() => {})
         .where({ collection: 'b' }).check(() => {})
@@ -131,7 +131,7 @@ describe('MigrationDSL', () => {
           replaceOne: mock.fn(async (filter, doc) => { replacedDocs.push({ filter, doc }) })
         }))
       }
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl.where({ collection: 'test', name: 'old' }).mutate(doc => { doc.name = 'new' })
       await dsl.execute(db)
 
@@ -151,7 +151,7 @@ describe('MigrationDSL', () => {
           replaceOne: mock.fn()
         }))
       }
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl.where({ collection: 'test', active: true, status: 'pending' }).mutate(() => {})
       await dsl.execute(db)
 
@@ -164,7 +164,7 @@ describe('MigrationDSL', () => {
           find: mock.fn(() => ({ toArray: async () => [{ _id: '1', invalid: true }] }))
         }))
       }
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl.where({ collection: 'test' }).check(doc => {
         if (doc.invalid) throw new Error('validation failed')
       })
@@ -179,7 +179,7 @@ describe('MigrationDSL', () => {
       const db = {
         collection: mock.fn(() => ({ createIndex: createIndexMock }))
       }
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl.setIndex('users', { email: 1 }, { unique: true })
       await dsl.execute(db)
 
@@ -192,7 +192,7 @@ describe('MigrationDSL', () => {
       const db = {
         collection: mock.fn(() => ({ createIndex: createIndexMock }))
       }
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl.setIndex('users', { email: 1 })
       await dsl.execute(db)
 
@@ -204,7 +204,7 @@ describe('MigrationDSL', () => {
       const db = {
         collection: mock.fn(() => ({ dropIndex: dropIndexMock }))
       }
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl.dropIndex('users', 'email_1')
       await dsl.execute(db)
 
@@ -213,7 +213,7 @@ describe('MigrationDSL', () => {
 
     it('should call db.renameCollection for renameCollection', async () => {
       const db = { renameCollection: mock.fn() }
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl.renameCollection('old', 'new')
       await dsl.execute(db)
 
@@ -223,7 +223,7 @@ describe('MigrationDSL', () => {
     it('should call fn(db) for runCommand', async () => {
       const commandFn = mock.fn()
       const db = {}
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl.runCommand(commandFn)
       await dsl.execute(db)
 
@@ -245,7 +245,7 @@ describe('MigrationDSL', () => {
         })),
         renameCollection: mock.fn(async () => { order.push('rename') })
       }
-      const dsl = new MigrationDSL()
+      const dsl = new DataMigration()
       dsl.where({ collection: 'a' }).mutate(() => {})
       dsl.setIndex('a', { x: 1 })
       dsl.renameCollection('b', 'c')
@@ -269,12 +269,14 @@ describe('MigrationsModule', () => {
           insertOne: mock.fn()
         }))
       },
+      app: { rootDir: '/tmp/app' },
       log: mock.fn(),
       useTransactions: false,
       runMigrations: proto.runMigrations,
       executeMigration: proto.executeMigration,
       executeWithTransaction: proto.executeWithTransaction,
       executeWithProxy: proto.executeWithProxy,
+      executeConfMigration: proto.executeConfMigration,
       filterPending: proto.filterPending,
       getCompletedMigrations: proto.getCompletedMigrations,
       getStatus: proto.getStatus,
@@ -288,8 +290,20 @@ describe('MigrationsModule', () => {
     return {
       module: 'mod-a',
       version: '1.0.0',
+      type: 'data',
       description: 'test migration',
       dsl: { execute: mock.fn() },
+      ...overrides
+    }
+  }
+
+  function createConfMigration (overrides) {
+    return {
+      module: 'mod-a',
+      version: '1.0.0',
+      type: 'conf',
+      description: 'test config migration',
+      configMigration: { execute: mock.fn(), operations: [{ module: null, fn: () => {} }] },
       ...overrides
     }
   }
@@ -298,39 +312,68 @@ describe('MigrationsModule', () => {
     it('should filter out completed migrations', () => {
       const inst = createInstance()
       const discovered = [
-        { module: 'mod-a', version: '1.0.0', description: 'first' },
-        { module: 'mod-a', version: '2.0.0', description: 'second' }
+        { module: 'mod-a', version: '1.0.0', type: 'data', description: 'first' },
+        { module: 'mod-a', version: '2.0.0', type: 'data', description: 'second' }
       ]
       const completed = [
-        { module: 'mod-a', version: '1.0.0' }
+        { module: 'mod-a', version: '1.0.0', type: 'data' }
       ]
       const pending = inst.filterPending(discovered, completed)
       assert.equal(pending.length, 1)
       assert.equal(pending[0].version, '2.0.0')
     })
 
-    it('should sort by semver then module name', () => {
+    it('should sort by semver then module name then type', () => {
       const inst = createInstance()
       const discovered = [
-        { module: 'mod-b', version: '2.0.0', description: 'b2' },
-        { module: 'mod-a', version: '2.0.0', description: 'a2' },
-        { module: 'mod-a', version: '1.0.0', description: 'a1' }
+        { module: 'mod-a', version: '1.0.0', type: 'conf', description: 'conf' },
+        { module: 'mod-b', version: '2.0.0', type: 'data', description: 'b2' },
+        { module: 'mod-a', version: '2.0.0', type: 'data', description: 'a2' },
+        { module: 'mod-a', version: '1.0.0', type: 'data', description: 'a1' }
       ]
       const pending = inst.filterPending(discovered, [])
       assert.equal(pending[0].version, '1.0.0')
-      assert.equal(pending[1].module, 'mod-a')
-      assert.equal(pending[1].version, '2.0.0')
-      assert.equal(pending[2].module, 'mod-b')
+      assert.equal(pending[0].type, 'data')
+      assert.equal(pending[1].version, '1.0.0')
+      assert.equal(pending[1].type, 'conf')
+      assert.equal(pending[2].module, 'mod-a')
       assert.equal(pending[2].version, '2.0.0')
+      assert.equal(pending[3].module, 'mod-b')
+    })
+
+    it('should treat completed records without type as data', () => {
+      const inst = createInstance()
+      const discovered = [
+        { module: 'mod-a', version: '1.0.0', type: 'data', description: 'first' }
+      ]
+      const completed = [
+        { module: 'mod-a', version: '1.0.0' }
+      ]
+      const pending = inst.filterPending(discovered, completed)
+      assert.equal(pending.length, 0)
+    })
+
+    it('should distinguish data and conf for same module+version', () => {
+      const inst = createInstance()
+      const discovered = [
+        { module: 'mod-a', version: '1.0.0', type: 'data', description: 'data' },
+        { module: 'mod-a', version: '1.0.0', type: 'conf', description: 'conf' }
+      ]
+      const completed = [
+        { module: 'mod-a', version: '1.0.0', type: 'data' }
+      ]
+      const pending = inst.filterPending(discovered, completed)
+      assert.equal(pending.length, 1)
+      assert.equal(pending[0].type, 'conf')
     })
 
     it('should return empty array when all are completed', () => {
       const inst = createInstance()
       const discovered = [
-        { module: 'mod-a', version: '1.0.0', description: 'first' }
+        { module: 'mod-a', version: '1.0.0', type: 'data', description: 'first' }
       ]
       const completed = [
-        { module: 'mod-a', version: '1.0.0' }
+        { module: 'mod-a', version: '1.0.0', type: 'data' }
       ]
       const pending = inst.filterPending(discovered, completed)
       assert.equal(pending.length, 0)
@@ -395,16 +438,70 @@ describe('MigrationsModule', () => {
       assert.ok(infoLogs.some(c => c.arguments[1].includes('(read-only proxy)')))
     })
 
-    it('should stop on migration failure', async () => {
+    it('should continue running after a migration failure and throw summary', async () => {
+      const inst = createInstance()
+      let callCount = 0
+      inst.executeMigration = mock.fn(async () => {
+        callCount++
+        if (callCount === 1) throw new Error('boom')
+      })
+      inst.discoverMigrations = mock.fn(async () => [
+        createMigration({ module: 'mod-a', version: '1.0.0' }),
+        createMigration({ module: 'mod-b', version: '2.0.0' })
+      ])
+
+      await assert.rejects(() => inst.runMigrations(), /1 migration\(s\) failed/)
+      assert.equal(inst.executeMigration.mock.callCount(), 2)
+    })
+
+    it('should log error for each failed migration', async () => {
       const inst = createInstance()
       inst.executeMigration = mock.fn(async () => { throw new Error('boom') })
       inst.discoverMigrations = mock.fn(async () => [
-        createMigration({ version: '1.0.0' }),
-        createMigration({ version: '2.0.0' })
+        createMigration({ module: 'mod-a', version: '1.0.0' }),
+        createMigration({ module: 'mod-b', version: '2.0.0' })
       ])
 
-      await assert.rejects(() => inst.runMigrations(), { message: 'boom' })
-      assert.equal(inst.executeMigration.mock.callCount(), 1)
+      await assert.rejects(() => inst.runMigrations(), /2 migration\(s\) failed/)
+      const errorLogs = inst.log.mock.calls.filter(c => c.arguments[0] === 'error')
+      assert.equal(errorLogs.length, 2)
+      assert.ok(errorLogs[0].arguments[1].includes('mod-a@1.0.0 failed'))
+      assert.ok(errorLogs[1].arguments[1].includes('mod-b@2.0.0 failed'))
+    })
+
+    it('should throw fatal restart error after successful conf migrations', async () => {
+      const inst = createInstance()
+      inst.executeMigration = mock.fn()
+      inst.discoverMigrations = mock.fn(async () => [
+        createConfMigration({ module: 'mod-a', version: '1.0.0' })
+      ])
+      await assert.rejects(
+        () => inst.runMigrations(),
+        /Config file\(s\) modified by 1 migration\(s\). Restart required/
+      )
+    })
+
+    it('should not throw restart error for conf migrations in dryRun mode', async () => {
+      const inst = createInstance()
+      inst.executeMigration = mock.fn()
+      inst.discoverMigrations = mock.fn(async () => [
+        createConfMigration({ module: 'mod-a', version: '1.0.0' })
+      ])
+      await inst.runMigrations({ dryRun: true })
+    })
+
+    it('should not throw restart error if conf migration failed', async () => {
+      const inst = createInstance()
+      inst.executeMigration = mock.fn(async (m) => {
+        if (m.type === 'conf') throw new Error('conf failed')
+      })
+      inst.discoverMigrations = mock.fn(async () => [
+        createConfMigration({ module: 'mod-a', version: '1.0.0' })
+      ])
+      await assert.rejects(
+        () => inst.runMigrations(),
+        /1 migration\(s\) failed/
+      )
     })
 
     it('should skip completed check in dryRun mode', async () => {
@@ -457,6 +554,47 @@ describe('MigrationsModule', () => {
       await inst.executeMigration(migration, { dryRun: true })
 
       assert.equal(inst.executeWithProxy.mock.callCount(), 1)
+    })
+
+    it('should route conf migrations to executeConfMigration', async () => {
+      const migration = createConfMigration()
+      const inst = createInstance()
+      inst.executeConfMigration = mock.fn()
+      await inst.executeMigration(migration, { dryRun: false })
+
+      assert.equal(inst.executeConfMigration.mock.callCount(), 1)
+      assert.equal(inst.executeConfMigration.mock.calls[0].arguments[0], migration)
+    })
+  })
+
+  describe('executeConfMigration', () => {
+    it('should execute the config migration and record completion', async () => {
+      const executeMock = mock.fn()
+      const migration = createConfMigration({
+        configMigration: { execute: executeMock, operations: [{ module: null, fn: () => {} }] }
+      })
+      const insertOneMock = mock.fn()
+      const inst = createInstance({
+        app: { rootDir: '/tmp/no-config-files' },
+        db: { collection: mock.fn(() => ({ insertOne: insertOneMock })) }
+      })
+      inst.executeConfMigration = proto.executeConfMigration
+      await inst.executeConfMigration(migration, { dryRun: false })
+
+      assert.equal(insertOneMock.mock.callCount(), 1)
+    })
+
+    it('should not record completion in dryRun mode', async () => {
+      const migration = createConfMigration()
+      const insertOneMock = mock.fn()
+      const inst = createInstance({
+        app: { rootDir: '/tmp/no-config-files' },
+        db: { collection: mock.fn(() => ({ insertOne: insertOneMock })) }
+      })
+      inst.executeConfMigration = proto.executeConfMigration
+      await inst.executeConfMigration(migration, { dryRun: true })
+
+      assert.equal(insertOneMock.mock.callCount(), 0)
     })
   })
 
@@ -593,15 +731,15 @@ describe('MigrationsModule', () => {
   })
 
   describe('getStatus', () => {
-    it('should return status for all discovered migrations', async () => {
+    it('should return status with type for all discovered migrations', async () => {
       const completedAt = new Date('2026-01-01')
       const inst = createInstance()
       inst.discoverMigrations = mock.fn(async () => [
-        { module: 'mod-a', version: '1.0.0', description: 'first' },
-        { module: 'mod-a', version: '2.0.0', description: 'second' }
+        { module: 'mod-a', version: '1.0.0', type: 'data', description: 'first' },
+        { module: 'mod-a', version: '1.0.0', type: 'conf', description: 'config' }
       ])
       inst.getCompletedMigrations = mock.fn(async () => [
-        { module: 'mod-a', version: '1.0.0', completedAt }
+        { module: 'mod-a', version: '1.0.0', type: 'data', completedAt }
       ])
       const status = await inst.getStatus()
 
@@ -609,14 +747,16 @@ describe('MigrationsModule', () => {
       assert.deepEqual(status[0], {
         module: 'mod-a',
         version: '1.0.0',
+        type: 'data',
         description: 'first',
         status: 'complete',
         completedAt
       })
       assert.deepEqual(status[1], {
         module: 'mod-a',
-        version: '2.0.0',
-        description: 'second',
+        version: '1.0.0',
+        type: 'conf',
+        description: 'config',
         status: 'pending',
         completedAt: null
       })
@@ -645,13 +785,14 @@ describe('MigrationsModule', () => {
       assert.deepEqual(result, docs)
     })
 
-    it('should insert a record into migrations', async () => {
+    it('should insert a record with type into migrations', async () => {
       const insertOneMock = mock.fn()
       const collectionMock = mock.fn(() => ({ insertOne: insertOneMock }))
       const inst = createInstance({ db: { collection: collectionMock } })
       await inst.recordCompleted({
         module: 'mod-a',
         version: '1.0.0',
+        type: 'conf',
         description: 'test'
       })
 
@@ -659,6 +800,7 @@ describe('MigrationsModule', () => {
       const doc = insertOneMock.mock.calls[0].arguments[0]
       assert.equal(doc.module, 'mod-a')
       assert.equal(doc.version, '1.0.0')
+      assert.equal(doc.type, 'conf')
       assert.equal(doc.description, 'test')
       assert.ok(doc.completedAt instanceof Date)
     })
