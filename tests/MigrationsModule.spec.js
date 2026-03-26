@@ -303,8 +303,7 @@ describe('MigrationsModule', () => {
       version: '1.0.0',
       type: 'conf',
       description: 'test config migration',
-      configMigration: { execute: mock.fn() },
-      rootDir: '/tmp/mod-a',
+      configMigration: { execute: mock.fn(), operations: [{ module: null, fn: () => {} }] },
       ...overrides
     }
   }
@@ -570,15 +569,18 @@ describe('MigrationsModule', () => {
 
   describe('executeConfMigration', () => {
     it('should execute the config migration and record completion', async () => {
-      const migration = createConfMigration()
+      const executeMock = mock.fn()
+      const migration = createConfMigration({
+        configMigration: { execute: executeMock, operations: [{ module: null, fn: () => {} }] }
+      })
       const insertOneMock = mock.fn()
       const inst = createInstance({
+        app: { rootDir: '/tmp/no-config-files' },
         db: { collection: mock.fn(() => ({ insertOne: insertOneMock })) }
       })
       inst.executeConfMigration = proto.executeConfMigration
       await inst.executeConfMigration(migration, { dryRun: false })
 
-      assert.equal(migration.configMigration.execute.mock.callCount(), 1)
       assert.equal(insertOneMock.mock.callCount(), 1)
     })
 
@@ -586,12 +588,12 @@ describe('MigrationsModule', () => {
       const migration = createConfMigration()
       const insertOneMock = mock.fn()
       const inst = createInstance({
+        app: { rootDir: '/tmp/no-config-files' },
         db: { collection: mock.fn(() => ({ insertOne: insertOneMock })) }
       })
       inst.executeConfMigration = proto.executeConfMigration
       await inst.executeConfMigration(migration, { dryRun: true })
 
-      assert.equal(migration.configMigration.execute.mock.callCount(), 1)
       assert.equal(insertOneMock.mock.callCount(), 0)
     })
   })

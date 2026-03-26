@@ -154,29 +154,80 @@ export default function (migration) {
 
 ## Config file migrations
 
-Config file migrations modify `.js` configuration files on disk. Each file must default-export a function that receives a migration object with `describe()` and `run()`:
+Config file migrations transform the application's `conf/*.config.js` files. The framework automatically discovers config files, loads each one, runs the migration's operations, and writes back any changes. Each file must default-export a function that receives a migration object with `describe()`, `where()`, and `mutate()`:
 
 ```javascript
 export default function (migration) {
-  migration.describe('Rename authToken to accessToken in config')
+  migration.describe('Move logger config keys to core')
 
-  migration.run(async ({ readFile, writeFile, log }) => {
-    const contents = await readFile('conf/config.js')
-    const updated = contents.replace(/authToken/g, 'accessToken')
-    await writeFile('conf/config.js', updated)
-  })
+  migration
+    .where('adapt-authoring-logger')
+    .mutate(config => {
+      const logger = config['adapt-authoring-logger']
+      const core = config['adapt-authoring-core'] ||= {}
+      core.logLevels = logger.levels
+      delete logger.levels
+      if (!Object.keys(logger).length) {
+        delete config['adapt-authoring-logger']
+      }
+    })
 }
 ```
 
-### Context API
+### DSL reference
 
-The `run()` callback receives a context object with:
+#### where(moduleName)
 
-- **`appDir`** — absolute path to the application root directory (where `conf/*.config.js` files live)
-- **`readFile(relativePath)`** — reads a file relative to the module's root directory, returns a string
-- **`writeFile(relativePath, contents)`** — writes a file relative to the module's root directory. In dry-run mode, logs the intended write without persisting
-- **`log(level, message)`** — logs a message at the given level
-- **`dryRun`** — boolean indicating whether the migration is running in dry-run mode
+Guards the following `mutate()` — if the named module section does not exist in the config file, the mutate is skipped. This avoids running transforms on config files that don't have the relevant section.
+
+```javascript
+migration.where('adapt-authoring-logger')
+```
+
+#### mutate(fn)
+
+Registers a function that receives the full config object and modifies it in place. Can be used with or without a preceding `where()`. The framework handles loading and writing — the migration only needs to transform the data.
+
+```javascript
+migration.mutate(config => {
+  config['adapt-authoring-core'].newKey = 'value'
+})
+```
+
+### Chaining
+
+Like data migrations, config migrations support chaining multiple `where`/`mutate` pairs:
+
+```javascript
+export default function (migration) {
+  migration.describe('Consolidate absorbed module config')
+
+  migration
+    .where('adapt-authoring-logger')
+    .mutate(config => {
+      const core = config['adapt-authoring-core'] ||= {}
+      core.logLevels = config['adapt-authoring-logger'].levels
+      delete config['adapt-authoring-logger']
+    })
+    .where('adapt-authoring-lang')
+    .mutate(config => {
+      const core = config['adapt-authoring-core'] ||= {}
+      core.defaultLang = config['adapt-authoring-lang'].defaultLang
+      delete config['adapt-authoring-lang']
+    })
+}
+```
+
+### How config files are processed
+
+For each pending config migration, the framework:
+
+1. Finds all `conf/*.config.js` files in the application root directory
+2. Dynamically imports each file to get the config object
+3. Serializes the config before running the migration
+4. Runs all registered operations against the config object
+5. Compares the serialized output — only writes back if the config actually changed
+6. In dry-run mode, logs which files would be written without persisting
 
 ### Restart behaviour
 
@@ -190,7 +241,7 @@ Process managers (pm2, systemd, Docker) will automatically restart the app, whic
 
 ### Cross-module config moves
 
-If a config key has moved from one module to another, the migration should live in the **destination** module. The `readFile` and `writeFile` helpers are scoped to the migration's own module root, but the migration function can use standard `fs` operations for cross-module changes if needed.
+If a config key has moved from one module to another, the migration should live in the **destination** module. The `mutate()` function receives the full config object, so it can read from any module section and write to any other.
 
 ## State tracking
 
