@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'fs/promises'
 import path from 'path'
 import os from 'os'
-import createConfigContext from '../lib/createConfigContext.js'
+import createConfigContext from '../lib/utils/createConfigContext.js'
 
 describe('createConfigContext', () => {
   let tmpDir

@@ -1,6 +1,6 @@
 import { describe, it, mock } from 'node:test'
 import assert from 'node:assert/strict'
-import createReadOnlyDb from '../lib/createReadOnlyDb.js'
+import createReadOnlyDb from '../lib/utils/createReadOnlyDb.js'
 
 function createMockDb () {
   const collectionMethods = {

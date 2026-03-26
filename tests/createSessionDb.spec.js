@@ -1,6 +1,6 @@
 import { describe, it, mock } from 'node:test'
 import assert from 'node:assert/strict'
-import createSessionDb from '../lib/createSessionDb.js'
+import createSessionDb from '../lib/utils/createSessionDb.js'
 
 describe('createSessionDb', () => {
   const session = { id: 'test-session' }
