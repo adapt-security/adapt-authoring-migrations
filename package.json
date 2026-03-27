@@ -11,15 +11,13 @@
     "test": "node --test 'tests/**/*.spec.js'"
   },
   "dependencies": {
-    "adapt-authoring-core": "^2.3.0",
+    "glob": "^11.0.0",
+    "mongodb": "^7.0.0",
     "semver": "^7.6.0"
   },
   "devDependencies": {
     "@adaptlearning/semantic-release-config": "^1.0.0",
     "standard": "^17.1.0"
-  },
-  "peerDependencies": {
-    "adapt-authoring-mongodb": "^3.0.0"
   },
   "release": {
     "extends": "@adaptlearning/semantic-release-config"
