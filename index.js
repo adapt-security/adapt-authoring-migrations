@@ -2,4 +2,4 @@
  * Data and config file migrations
  * @namespace migrations
  */
-export { runMigrations } from './lib/MigrationsModule.js'
+export { runMigrations } from './lib/runMigrations.js'
