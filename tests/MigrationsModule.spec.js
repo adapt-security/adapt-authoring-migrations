@@ -1,7 +1,7 @@
 import { describe, it, mock } from 'node:test'
 import assert from 'node:assert/strict'
 import DataMigration from '../lib/DataMigration.js'
-import { filterPending } from '../lib/runMigrations.js'
+import { filterPending, logConfigDiff } from '../lib/runMigrations.js'
 
 // ── DataMigration ────────────────────────────────────────────────────
 
@@ -327,5 +327,73 @@ describe('filterPending', () => {
   it('should return empty array when nothing is discovered', () => {
     const pending = filterPending([], [])
     assert.equal(pending.length, 0)
+  })
+})
+
+// ── logConfigDiff ────────────────────────────────────────────────────
+
+describe('logConfigDiff', () => {
+  it('should log removed keys with - prefix', () => {
+    const logs = []
+    const log = mock.fn((level, id, msg) => logs.push({ level, id, msg }))
+    logConfigDiff({ 'mod-a': { key: 'val' } }, {}, log)
+    assert.equal(logs.length, 1)
+    assert.equal(logs[0].level, 'warn')
+    assert.ok(logs[0].msg.startsWith('  - mod-a.key'))
+  })
+
+  it('should log added keys with + prefix', () => {
+    const logs = []
+    const log = mock.fn((level, id, msg) => logs.push({ level, id, msg }))
+    logConfigDiff({}, { 'mod-b': { newKey: 42 } }, log)
+    assert.equal(logs.length, 1)
+    assert.equal(logs[0].level, 'warn')
+    assert.ok(logs[0].msg.startsWith('  + mod-b.newKey'))
+    assert.ok(logs[0].msg.includes('42'))
+  })
+
+  it('should log changed key values with ~ prefix', () => {
+    const logs = []
+    const log = mock.fn((level, id, msg) => logs.push({ level, id, msg }))
+    logConfigDiff({ 'mod-a': { key: 'old' } }, { 'mod-a': { key: 'new' } }, log)
+    assert.equal(logs.length, 1)
+    assert.ok(logs[0].msg.startsWith('  ~ mod-a.key'))
+    assert.ok(logs[0].msg.includes('"old"'))
+    assert.ok(logs[0].msg.includes('"new"'))
+  })
+
+  it('should log added key within existing module with + prefix', () => {
+    const logs = []
+    const log = mock.fn((level, id, msg) => logs.push({ level, id, msg }))
+    logConfigDiff({ 'mod-a': { existing: 1 } }, { 'mod-a': { existing: 1, added: 2 } }, log)
+    assert.equal(logs.length, 1)
+    assert.ok(logs[0].msg.startsWith('  + mod-a.added'))
+  })
+
+  it('should log removed key within existing module with - prefix', () => {
+    const logs = []
+    const log = mock.fn((level, id, msg) => logs.push({ level, id, msg }))
+    logConfigDiff({ 'mod-a': { keep: 1, drop: 2 } }, { 'mod-a': { keep: 1 } }, log)
+    assert.equal(logs.length, 1)
+    assert.ok(logs[0].msg.startsWith('  - mod-a.drop'))
+  })
+
+  it('should log nothing when configs are identical', () => {
+    const log = mock.fn()
+    logConfigDiff({ 'mod-a': { key: 'val' } }, { 'mod-a': { key: 'val' } }, log)
+    assert.equal(log.mock.callCount(), 0)
+  })
+
+  it('should handle a replace (remove from source, add to dest)', () => {
+    const logs = []
+    const log = mock.fn((level, id, msg) => logs.push(msg))
+    logConfigDiff(
+      { 'mod-a': { oldKey: 'value' } },
+      { 'mod-b': { newKey: 'value' } },
+      log
+    )
+    assert.equal(logs.length, 2)
+    assert.ok(logs.some(m => m.startsWith('  - mod-a.oldKey')))
+    assert.ok(logs.some(m => m.startsWith('  + mod-b.newKey')))
   })
 })
