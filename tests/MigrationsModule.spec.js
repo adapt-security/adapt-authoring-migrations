@@ -333,21 +333,21 @@ describe('filterPending', () => {
 // ── logConfigDiff ────────────────────────────────────────────────────
 
 describe('logConfigDiff', () => {
-  it('should log removed keys with - prefix', () => {
+  it('should log removed keys with - prefix at default info level', () => {
     const logs = []
     const log = mock.fn((level, id, msg) => logs.push({ level, id, msg }))
     logConfigDiff({ 'mod-a': { key: 'val' } }, {}, log)
     assert.equal(logs.length, 1)
-    assert.equal(logs[0].level, 'warn')
+    assert.equal(logs[0].level, 'info')
     assert.ok(logs[0].msg.startsWith('  - mod-a.key'))
   })
 
-  it('should log added keys with + prefix', () => {
+  it('should log added keys with + prefix at default info level', () => {
     const logs = []
     const log = mock.fn((level, id, msg) => logs.push({ level, id, msg }))
     logConfigDiff({}, { 'mod-b': { newKey: 42 } }, log)
     assert.equal(logs.length, 1)
-    assert.equal(logs[0].level, 'warn')
+    assert.equal(logs[0].level, 'info')
     assert.ok(logs[0].msg.startsWith('  + mod-b.newKey'))
     assert.ok(logs[0].msg.includes('42'))
   })
@@ -395,5 +395,13 @@ describe('logConfigDiff', () => {
     assert.equal(logs.length, 2)
     assert.ok(logs.some(m => m.startsWith('  - mod-a.oldKey')))
     assert.ok(logs.some(m => m.startsWith('  + mod-b.newKey')))
+  })
+
+  it('should use the provided log level', () => {
+    const logs = []
+    const log = mock.fn((level, id, msg) => logs.push({ level, id, msg }))
+    logConfigDiff({ 'mod-a': { key: 'val' } }, {}, log, 'warn')
+    assert.equal(logs.length, 1)
+    assert.equal(logs[0].level, 'warn')
   })
 })
