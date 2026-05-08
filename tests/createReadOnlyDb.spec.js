@@ -44,7 +44,8 @@ describe('createReadOnlyDb', () => {
 
         assert.equal(db._collectionMethods[method].mock.callCount(), 0)
         assert.equal(logMock.mock.callCount(), 1)
-        assert.ok(logMock.mock.calls[0].arguments[1].includes(`content.${method}`))
+        assert.equal(logMock.mock.calls[0].arguments[1], 'migrations')
+        assert.ok(logMock.mock.calls[0].arguments[2].includes(`content.${method}`))
       })
     }
   })
@@ -98,7 +99,8 @@ describe('createReadOnlyDb', () => {
 
         assert.equal(db[method].mock.callCount(), 0)
         assert.equal(logMock.mock.callCount(), 1)
-        assert.ok(logMock.mock.calls[0].arguments[1].includes(`db.${method}`))
+        assert.equal(logMock.mock.calls[0].arguments[1], 'migrations')
+        assert.ok(logMock.mock.calls[0].arguments[2].includes(`db.${method}`))
       })
     }
   })
