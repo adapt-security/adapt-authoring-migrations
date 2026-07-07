@@ -152,6 +152,16 @@ export default function (migration) {
 }
 ```
 
+### Transactions and DDL operations
+
+On a deployment that supports transactions (a replica set, including MongoDB Atlas), each data migration runs inside a single multi-document transaction so that a partial failure rolls back cleanly. On a standalone `mongod` there are no transactions and each operation is applied directly.
+
+MongoDB does **not** permit DDL and certain other commands inside a multi-document transaction. This means a migration that uses `setIndex` (`createIndex`), `dropIndex`, `renameCollection`, or a `runCommand` that issues DDL / `distinct` / `listCollections` will **throw on a replica set** — even though the same migration runs fine on a standalone `mongod`, where the transaction path is never taken. Because standalone is the usual local/CI setup, this discrepancy is easy to miss until it fails on Atlas.
+
+The same applies in [dry-run mode](#dry-run-mode): on a replica set a dry run uses the (aborted) transaction path, so a dry run of a DDL migration fails there too; the read-only proxy that would otherwise log the DDL is only used on standalone.
+
+Keep index and collection changes in their own migration files, separate from document mutations, so that when this bites you can identify and re-work the offending migration in isolation. For operations that must run outside a transaction, perform them via `runCommand` against a deployment where you can control the session, or apply them as a manual operational step recorded alongside the release.
+
 ## Config file migrations
 
 Config file migrations transform the application's `conf/*.config.js` files. The framework automatically discovers config files, loads each one, runs the migration's operations, and writes back any changes. Each file must default-export a function that receives a migration object:
