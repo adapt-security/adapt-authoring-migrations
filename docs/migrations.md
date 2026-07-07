@@ -247,9 +247,44 @@ Config file(s) modified by N migration(s). Restart required to load updated conf
 
 Process managers (pm2, systemd, Docker) will automatically restart the app, which then picks up the updated config and boots normally. The config migrations are already recorded as complete and will not re-run.
 
+### Read-only config
+
+Some deployments keep `conf/*.config.js` under version control or config management and don't want the app writing to them. Set `readOnlyConfig` to `true` in the `adapt-authoring-migrations` section of your app config to make config migrations report the required changes instead of applying them:
+
+```javascript
+{
+  'adapt-authoring-migrations': {
+    readOnlyConfig: true
+  }
+}
+```
+
+When enabled, each config migration that would change a file logs a `[READ-ONLY CONFIG]` warning naming the file and the module@version, followed by the same key-level diff shown in dry-run mode, then skips the write — you apply the change by hand.
+
+Because no file is written, no restart is forced. The migration is also **not** recorded as complete, so it re-runs (and re-warns) on every boot until you make the change manually; once the config matches, the computed diff is empty and the warning stops. This affects config migrations only — data migrations still run and are recorded as normal.
+
 ### Cross-module config moves
 
 If a config key has moved from one module to another, the migration should live in the **destination** module. The `mutate()` function receives the full config object, so it can read from any module section and write to any other.
+
+## Dry-run mode
+
+Pass the `--dry-run` flag on startup to preview pending migrations without persisting any changes:
+
+```bash
+npm start -- --dry-run
+```
+
+Every pending migration is discovered and executed, but all writes are rolled back or suppressed, so you can review exactly what would change before running for real. Log lines are prefixed with `[DRY RUN]`, and the reported mode tells you which mechanism is in use.
+
+Behaviour differs by deployment:
+
+- **Replica set (transactions available)** — each data migration runs for real inside a transaction that is then aborted. Reads and mutations execute against live data, so `where()` matching and `check()` validation are exercised exactly as in a real run, but nothing is committed.
+- **Standalone mongod (no transactions)** — data migrations run through a read-only proxy. Reads execute normally, but write methods (`insertOne`, `updateMany`, `drop`, `createIndex`, `renameCollection`, etc.) are intercepted and logged instead of executed, e.g. `[DRY RUN] courses.updateMany({...})`.
+
+Config file migrations compute the change and log a key-level diff (`+` added, `-` removed, `~` changed) followed by `would write <file>`, but leave the files untouched.
+
+A dry run never records anything in the `migrations` collection and never triggers the [restart](#restart-behaviour) that config migrations normally force. Completion state is also ignored, so a dry run reports **every** discovered migration as pending — including ones already applied — giving you the full set that would run against a fresh database.
 
 ## State tracking
 
