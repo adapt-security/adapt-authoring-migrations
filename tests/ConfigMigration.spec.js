@@ -44,6 +44,25 @@ describe('ConfigMigration', () => {
       m.execute({ 'mod-a': {} })
       assert.equal(fn.mock.callCount(), 1)
     })
+
+    it('should pass (config, context) to the mutate fn', () => {
+      const fn = mock.fn()
+      const m = new ConfigMigration()
+      const config = { 'mod-a': { key: 'val' } }
+      const context = { merged: { 'mod-a': { key: 'val', fromDefaults: 1 } }, isOverrides: true }
+      m.mutate(fn)
+      m.execute(config, context)
+      assert.equal(fn.mock.calls[0].arguments[0], config)
+      assert.equal(fn.mock.calls[0].arguments[1], context)
+    })
+
+    it('should default context to an empty object when omitted', () => {
+      let seen
+      const m = new ConfigMigration()
+      m.mutate((config, context) => { seen = context })
+      m.execute({ 'mod-a': {} })
+      assert.deepEqual(seen, {})
+    })
   })
 
   describe('replace', () => {
