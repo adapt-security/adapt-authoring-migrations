@@ -1,6 +1,6 @@
 {
   "name": "adapt-authoring-migrations",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Module for running data and config file migrations on app startup",
   "homepage": "https://github.com/adapt-security/adapt-authoring-migrations",
   "license": "GPL-3.0",
