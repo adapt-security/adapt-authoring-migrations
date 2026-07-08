@@ -8,7 +8,7 @@ The migrations module provides a convention-based system for running data and co
 2. Each file is compared against the `migrations` collection to determine what has already run
 3. Pending migrations are sorted by version and executed in order
 4. Completed migrations are recorded so they never run twice
-5. If any config file migrations ran, the app throws a fatal error to force a restart
+5. Any config file changes are written to disk, but only take effect on the next restart
 
 ## File naming
 
@@ -31,7 +31,7 @@ Choose versions that correspond to the module release that requires the migratio
 
 ## Execution order
 
-Pending migrations are sorted globally by semver version, then alphabetically by module name, then by type (`data` before `conf`). This ensures data migrations take effect in the current boot before config migrations trigger a restart.
+Pending migrations are sorted globally by semver version, then alphabetically by module name, then by type (`data` before `conf`). This ensures data migrations take effect in the current boot before config migrations, whose file changes only take effect on the next restart.
 
 ## Data migrations
 
@@ -208,7 +208,7 @@ migration.remove('mute', 'dateFormat')
 
 #### mutate(fn)
 
-Escape hatch for operations not covered by `replace` and `remove`. Receives the full config object and modifies it in place.
+Escape hatch for operations not covered by `replace` and `remove`. Receives `(config, context)` and modifies `config` in place.
 
 ```javascript
 migration.mutate(config => {
@@ -216,7 +216,17 @@ migration.mutate(config => {
 })
 ```
 
-Empty module sections are automatically cleaned up after all operations run.
+On a [`withOverrides` install](#the-withoverrides-round-trip) `config` is the file's authored **overrides** — a module section that only exists in the baseline defaults will be absent. Write null-safely, and read a baseline value via `context.merged` (a snapshot of the fully-merged config at boot):
+
+```javascript
+migration.mutate((config, context) => {
+  const current = context.merged['adapt-authoring-core'].logLevels
+  config['adapt-authoring-core'] ??= {}
+  config['adapt-authoring-core'].logLevels = [...current, 'verbose']
+})
+```
+
+A `mutate` that throws (e.g. assumes a section that isn't in the overrides) is reported as a per-file warning; that file is skipped and the migration is left pending so it re-runs once the mutate is made null-safe. Empty module sections are automatically cleaned up after all operations run.
 
 ### Chaining
 
@@ -238,24 +248,38 @@ export default function (migration) {
 
 ### How config files are processed
 
-For each pending config migration, the framework:
+On the first config migration of a boot, every `conf/*.config.js` file is imported once into a shared working-copy cache, keyed by file. Each pending config migration then runs against that cache, so multiple migrations **compose** on the same file instead of each overwriting the last. For each file, the framework:
 
-1. Finds all `conf/*.config.js` files in the application root directory
-2. Dynamically imports each file to get the config object
-3. Serializes the config before running the migration
-4. Runs all registered operations against the config object
-5. Compares the serialized output — only writes back if the config actually changed
-6. In dry-run mode, logs which files would be written without persisting
+1. Runs the migration's operations against the cached working copy
+2. Compares the serialized output — only writes back if the config actually changed
+3. Preserves `key: undefined` entries (used to unset an inherited default), which plain JSON would drop
+4. In dry-run mode, logs which files would be written without persisting
+
+### The withOverrides round-trip
+
+An instance may keep its `conf/*.config.js` as a plain object (`export default { ... }`) or layer its settings over a shared baseline:
+
+```javascript
+// conf/defaults.config.js — the shared baseline
+export function withOverrides (overrides) { /* deep-merge onto defaults */ }
+export default defaults
+
+// conf/production.config.js — only this instance's overrides
+import { withOverrides } from './defaults.config.js'
+export default withOverrides({ 'adapt-authoring-server': { port: 5678 } })
+```
+
+Config migrations round-trip both styles. Each imported config file is classified by two non-enumerable markers a `withOverrides` helper attaches (`Symbol.for('adapt-authoring:configOverrides')` on the merged result, `Symbol.for('adapt-authoring:configDefaults')` on the baseline):
+
+- **plain** — a plain object export. Operations run against the whole object; re-emitted as `export default { ... }` (the original behaviour).
+- **overrides** — a `withOverrides({...})` file. Operations run against the authored **overrides only** (not the merged defaults); re-emitted as `export default withOverrides({ ... })` so the wrapper and inherited defaults are preserved rather than inlined. A key that lives only in the baseline is a no-op here — the baseline carries that change.
+- **defaults** — the baseline file itself. **Skipped**: it is maintained by hand in the same release that ships the migration.
+
+A plain instance needs no markers and is unaffected. To adopt the pattern, have your baseline's `withOverrides` attach the markers (non-enumerable, so the config loader and `JSON.stringify` never see them; global `Symbol.for` so this module reads them without importing your config).
 
 ### Restart behaviour
 
-Config files are loaded at startup, so changes won't take effect until the process restarts. After all migrations complete, if any config file migrations ran successfully (non-dry-run), the module throws a fatal error:
-
-```
-Config file(s) modified by N migration(s). Restart required to load updated configuration.
-```
-
-Process managers (pm2, systemd, Docker) will automatically restart the app, which then picks up the updated config and boots normally. The config migrations are already recorded as complete and will not re-run.
+Config files are read once at startup — before migrations run — so changes a migration writes to disk **take effect on the next restart**, not the current boot. Nothing is thrown to force this; run under a process manager (pm2, systemd, Docker) if you want an automatic restart after config changes. The migrations are recorded as complete and will not re-run.
 
 ### Read-only config
 
@@ -271,7 +295,22 @@ Some deployments keep `conf/*.config.js` under version control or config managem
 
 When enabled, each config migration that would change a file logs a `[READ-ONLY CONFIG]` warning naming the file and the module@version, followed by the same key-level diff shown in dry-run mode, then skips the write — you apply the change by hand.
 
-Because no file is written, no restart is forced. The migration is also **not** recorded as complete, so it re-runs (and re-warns) on every boot until you make the change manually; once the config matches, the computed diff is empty and the warning stops. This affects config migrations only — data migrations still run and are recorded as normal.
+The migration is **not** recorded as complete, so it re-runs (and re-warns) on every boot until you make the change manually; once the config matches, the computed diff is empty and the warning stops. This affects config migrations only — data migrations still run and are recorded as normal.
+
+Report-only mode is also entered **automatically** when the `conf` directory isn't writable — the module checks write access up front, and defensively falls back if a write is denied (`EACCES`/`EROFS`/`EPERM`). So on a deployment with a read-only conf dir you get the same report-and-diff behaviour with no configuration; the warning notes `(conf dir is not writable)`. Set `readOnlyConfig: true` only to force report-only where the conf dir *is* writable but you still don't want the app to touch it (e.g. version-controlled config).
+
+#### Secret redaction
+
+The key-level diff (in read-only and dry-run modes) never prints secret values. A leaf key that looks sensitive — matching `secret`, `password`, `token`, `apiKey`, `credential`, `connectionUri`, `privateKey`, `passphrase` and similar — is shown as `[redacted]` (`~ …auth.tokenSecret: [redacted] -> [redacted]`), and secrets nested inside a non-sensitive key's object value are masked in place. Add extra patterns with `redactKeys` (regex sources, additive to the built-ins — they can never disable them):
+
+```javascript
+{
+  'adapt-authoring-migrations': {
+    readOnlyConfig: true,
+    redactKeys: ['licenceKey', 'internalToken']
+  }
+}
+```
 
 ### Cross-module config moves
 
@@ -292,9 +331,9 @@ Behaviour differs by deployment:
 - **Replica set (transactions available)** — each data migration runs for real inside a transaction that is then aborted. Reads and mutations execute against live data, so `where()` matching and `check()` validation are exercised exactly as in a real run, but nothing is committed.
 - **Standalone mongod (no transactions)** — data migrations run through a read-only proxy. Reads execute normally, but write methods (`insertOne`, `updateMany`, `drop`, `createIndex`, `renameCollection`, etc.) are intercepted and logged instead of executed, e.g. `[DRY RUN] courses.updateMany({...})`.
 
-Config file migrations compute the change and log a key-level diff (`+` added, `-` removed, `~` changed) followed by `would write <file>`, but leave the files untouched.
+Config file migrations compute the change and log a key-level diff (`+` added, `-` removed, `~` changed, [secrets redacted](#secret-redaction)) followed by `would write <file>`, but leave the files untouched.
 
-A dry run never records anything in the `migrations` collection and never triggers the [restart](#restart-behaviour) that config migrations normally force. Completion state is also ignored, so a dry run reports **every** discovered migration as pending — including ones already applied — giving you the full set that would run against a fresh database.
+A dry run never records anything in the `migrations` collection. Completion state is also ignored, so a dry run reports **every** discovered migration as pending — including ones already applied — giving you the full set that would run against a fresh database.
 
 ## State tracking
 

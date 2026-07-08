@@ -2,6 +2,7 @@ import { describe, it, mock } from 'node:test'
 import assert from 'node:assert/strict'
 import DataMigration from '../lib/DataMigration.js'
 import { filterPending, logConfigDiff } from '../lib/runMigrations.js'
+import { buildRedact } from '../lib/utils/redactConfig.js'
 
 // ── DataMigration ────────────────────────────────────────────────────
 
@@ -403,5 +404,48 @@ describe('logConfigDiff', () => {
     logConfigDiff({ 'mod-a': { key: 'val' } }, {}, log, 'warn')
     assert.equal(logs.length, 1)
     assert.equal(logs[0].level, 'warn')
+  })
+
+  it('should redact an added sensitive value', () => {
+    const logs = []
+    const log = mock.fn((level, id, msg) => logs.push(msg))
+    logConfigDiff({}, { 'adapt-authoring-auth': { tokenSecret: 'super-secret' } }, log)
+    assert.equal(logs[0], '  + adapt-authoring-auth.tokenSecret: [redacted]')
+    assert.ok(!logs[0].includes('super-secret'))
+  })
+
+  it('should redact a changed sensitive value on both sides', () => {
+    const logs = []
+    const log = mock.fn((level, id, msg) => logs.push(msg))
+    logConfigDiff(
+      { 'adapt-authoring-mongodb': { connectionUri: 'mongodb://old' } },
+      { 'adapt-authoring-mongodb': { connectionUri: 'mongodb://new' } },
+      log
+    )
+    assert.equal(logs[0], '  ~ adapt-authoring-mongodb.connectionUri: [redacted] -> [redacted]')
+    assert.ok(!logs[0].includes('mongodb://'))
+  })
+
+  it('should mask a secret nested inside a non-sensitive key value', () => {
+    const logs = []
+    const log = mock.fn((level, id, msg) => logs.push(msg))
+    logConfigDiff({}, { 'mod-a': { options: { apiKey: 'sk-abc', model: 'haiku' } } }, log)
+    assert.ok(logs[0].includes('"apiKey":"[redacted]"'))
+    assert.ok(logs[0].includes('"model":"haiku"'))
+    assert.ok(!logs[0].includes('sk-abc'))
+  })
+
+  it('should show non-sensitive values unredacted', () => {
+    const logs = []
+    const log = mock.fn((level, id, msg) => logs.push(msg))
+    logConfigDiff({}, { 'adapt-authoring-server': { port: 5678 } }, log)
+    assert.equal(logs[0], '  + adapt-authoring-server.port: 5678')
+  })
+
+  it('should honour additive redactKeys via a custom predicate', () => {
+    const logs = []
+    const log = mock.fn((level, id, msg) => logs.push(msg))
+    logConfigDiff({}, { 'mod-a': { customField: 'hide-me' } }, log, 'info', buildRedact(['customField']))
+    assert.equal(logs[0], '  + mod-a.customField: [redacted]')
   })
 })
